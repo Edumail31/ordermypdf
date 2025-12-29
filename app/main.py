@@ -356,10 +356,20 @@ async def cleanup_temp_files():
 # STATIC FILES (Pre-built frontend)
 # ============================================
 
-# Mount pre-built frontend dist folder if it exists
-frontend_dist_path = "frontend/dist"
-if os.path.exists(frontend_dist_path):
-    app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="static")
+# Serve frontend dist files with SPA routing support
+# Mount AFTER all API routes so /process and /download work first
+if os.path.exists("frontend/dist"):
+    # Serve static assets
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets", check_dir=True), name="assets")
+    
+    # Catch-all route: serve index.html for SPA routing
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve SPA - always return index.html for unknown routes"""
+        index_path = "frontend/dist/index.html"
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {"error": "Frontend not found"}
 
 
 # ============================================
