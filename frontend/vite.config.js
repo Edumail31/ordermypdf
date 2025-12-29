@@ -5,11 +5,26 @@ const API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
-      '/process': API_URL,
-      '/download': API_URL,
+      '/process': {
+        target: API_URL,
+        changeOrigin: true,
+      },
+      '/download': {
+        target: API_URL,
+        changeOrigin: true,
+      },
     },
   },
 });
