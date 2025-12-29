@@ -10,15 +10,15 @@ class Settings(BaseSettings):
     """Application configuration"""
     
     # AI / LLM Configuration
-    groq_api_key: str
-    llm_model: str = "llama-3.1-70b-versatile"
+    groq_api_key: str = "test-key-configure-in-env"
+    llm_model: str = "llama-3.3-70b-versatile"
     
     # Server Configuration
     host: str = "0.0.0.0"
     port: int = 8000
     
     # File Upload Limits
-    max_file_size_mb: int = 10
+    max_file_size_mb: int = 100
     max_files_per_request: int = 5
     
     model_config = SettingsConfigDict(
