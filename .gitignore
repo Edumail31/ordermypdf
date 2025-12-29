@@ -30,7 +30,12 @@ outputs/
 .DS_Store
 Thumbs.db
 
-# Distribution / packaging
-dist/
+# Distribution / packaging (Python only)
 build/
 *.egg-info/
+
+# Node modules (frontend dependencies)
+node_modules/
+npm-debug.log
+
+# Keep frontend/dist for deployment!
