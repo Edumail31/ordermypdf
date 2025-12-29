@@ -3,6 +3,7 @@ services:
     name: ordermypdf
     runtime: python
     pythonVersion: 3.13
+    buildCommand: cd frontend && npm install && chmod +x node_modules/.bin/* && npm run build && cd ..
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GROQ_API_KEY
@@ -16,13 +17,3 @@ services:
       - key: MAX_FILE_SIZE_MB
         value: "100"
         scope: run
-
-  - type: static
-    name: ordermypdf-frontend
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
-    routes:
-      - path: /
-        destination: /index.html
-      - path: /api/*
-        destination: http://ordermypdf/
