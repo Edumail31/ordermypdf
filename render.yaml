@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: ordermypdf
+    runtime: python
+    pythonVersion: 3.13
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        scope: run
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+        scope: run
+      - key: MAX_FILES_PER_REQUEST
+        value: "5"
+        scope: run
+      - key: MAX_FILE_SIZE_MB
+        value: "100"
+        scope: run
+
+  - type: static
+    name: ordermypdf-frontend
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - path: /
+        destination: /index.html
+      - path: /api/*
+        destination: http://ordermypdf/
