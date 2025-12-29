@@ -2,8 +2,8 @@ services:
   - type: web
     name: ordermypdf
     runtime: python
-    pythonVersion: 3.13
-    buildCommand: cd frontend && npm install && chmod +x node_modules/.bin/* && npm run build && cd ..
+    pythonVersion: 3.11
+    buildCommand: apt-get update && apt-get install -y ghostscript && pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GROQ_API_KEY
@@ -16,4 +16,7 @@ services:
         scope: run
       - key: MAX_FILE_SIZE_MB
         value: "100"
+        scope: run
+      - key: PYTHONUNBUFFERED
+        value: "1"
         scope: run
