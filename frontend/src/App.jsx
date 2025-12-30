@@ -1174,8 +1174,11 @@ export default function App() {
 
       let jobId;
 
-      // Check if we have a completed pre-upload
-      if (preUploadStatus === "ready" && preUploadId) {
+      // Try to use pre-upload if it's ready, otherwise do normal upload
+      // Note: preUploadStatus might be stale, so we also check preUploadId directly
+      const canUsePreUpload = preUploadId && preUploadStatus === "ready";
+      
+      if (canUsePreUpload) {
         // Use the pre-uploaded files - instant!
         console.log("[Submit] Using pre-uploaded files:", preUploadId);
         setIsUploading(false);
@@ -1189,79 +1192,7 @@ export default function App() {
         }
         formData.append("session_id", sessionIdRef.current);
         
-        const response = await fetch("/submit-with-upload", {
-          method: "POST",
-          body: formData,
-          signal: abortControllerRef.current.signal,
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || `Server error (${response.status})`);
-        }
-        
-        const result = await response.json();
-        jobId = result.job_id;
-        
-        // Clear pre-upload state
-        setPreUploadId(null);
-        setPreUploadStatus("idle");
-        
-      } else if (preUploadStatus === "uploading") {
-        // Pre-upload in progress - wait for it then submit
-        console.log("[Submit] Waiting for pre-upload to complete...");
-        
-        // Update status to show waiting
-        setMessages((prev) => {
-          const trimmed = prev.filter((m, idx) => {
-            if (idx !== prev.length - 1) return true;
-            return !(m.role === "agent" && m.tone === "status");
-          });
-          return [
-            ...trimmed,
-            {
-              id: makeId(),
-              role: "agent",
-              tone: "status",
-              text: `Upload in progress... ${preUploadProgress}%`,
-            },
-          ];
-        });
-        
-        // Poll until pre-upload completes
-        while (preUploadStatus === "uploading") {
-          await new Promise((r) => setTimeout(r, 200));
-          // Update the progress display
-          setMessages((prev) => {
-            const trimmed = prev.filter((m, idx) => {
-              if (idx !== prev.length - 1) return true;
-              return !(m.role === "agent" && m.tone === "status");
-            });
-            return [
-              ...trimmed,
-              {
-                id: makeId(),
-                role: "agent",
-                tone: "status",
-                text: `Upload in progress... ${preUploadProgress}%`,
-              },
-            ];
-          });
-        }
-        
-        // Check if preupload succeeded
-        if (preUploadStatus === "ready" && preUploadId) {
-          const formData = new FormData();
-          formData.append("upload_id", preUploadId);
-          formData.append("prompt", userText);
-          if (pendingClarification?.question) {
-            formData.append("context_question", pendingClarification.question);
-          }
-          formData.append("session_id", sessionIdRef.current);
-          
-          setIsUploading(false);
-          setUploadProgress(100);
-          
+        try {
           const response = await fetch("/submit-with-upload", {
             method: "POST",
             body: formData,
@@ -1270,6 +1201,11 @@ export default function App() {
           
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            // If preupload expired/not found, fall through to normal upload
+            if (response.status === 404) {
+              console.log("[Submit] Pre-upload expired, falling back to normal upload");
+              throw new Error("FALLBACK_TO_NORMAL");
+            }
             throw new Error(errorData.detail || `Server error (${response.status})`);
           }
           
@@ -1279,14 +1215,21 @@ export default function App() {
           // Clear pre-upload state
           setPreUploadId(null);
           setPreUploadStatus("idle");
-        } else {
-          // Pre-upload failed, fall back to regular upload
-          throw new Error("Pre-upload failed. Retrying with normal upload...");
+        } catch (err) {
+          if (err.message === "FALLBACK_TO_NORMAL") {
+            // Fall through to normal upload
+            setPreUploadId(null);
+            setPreUploadStatus("idle");
+          } else {
+            throw err;
+          }
         }
-        
-      } else {
-        // No pre-upload, do regular upload
-        console.log("[Submit] No pre-upload, doing regular upload");
+      }
+      
+      // If we don't have a jobId yet (no preupload or it failed), do normal upload
+      if (!jobId) {
+        console.log("[Submit] Doing regular upload");
+        setIsUploading(true);
         
         const formData = new FormData();
         files.forEach((file) => formData.append("files", file));
