@@ -729,8 +729,7 @@ def ocr_pdf(
             output_path,
             language=language or "eng",
             deskew=bool(deskew),
-            force_ocr=True,
-            skip_text=True,
+            skip_text=True,  # Skip pages that already have text (don't force re-OCR)
             output_type="pdf",
             progress_bar=False,
         )
