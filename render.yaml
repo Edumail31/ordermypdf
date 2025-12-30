@@ -4,7 +4,7 @@ services:
     runtime: python
     pythonVersion: 3.11
     buildCommand: apt-get update && apt-get install -y ghostscript && pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 600
     envVars:
       - key: GROQ_API_KEY
         scope: run

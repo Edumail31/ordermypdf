@@ -414,7 +414,9 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      // Large files (compression, OCR) can take several minutes - use 10 min timeout
+      const timeoutMs = 10 * 60 * 1000; // 10 minutes
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await fetch("/process", {
         method: "POST",
