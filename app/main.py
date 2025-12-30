@@ -12,16 +12,19 @@ import os
 import shutil
 import time
 from typing import List
+from dataclasses import dataclass, field
+from threading import Lock
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
+import re
 
 from app.config import settings
 from app.models import ProcessResponse, ParsedIntent
-import re
 from app.clarification_layer import clarify_intent
+from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDER, RE_ROTATE_DEGREES, RE_COMPRESS_SIZE
 from app.pdf_operations import (
     merge_pdfs,
     split_pdf,
@@ -29,10 +32,210 @@ from app.pdf_operations import (
     compress_pdf,
     pdf_to_docx,
     compress_pdf_to_target,
+    rotate_pdf,
+    reorder_pdf,
+    watermark_pdf,
+    add_page_numbers,
+    extract_text,
+    pdf_to_images_zip,
+    images_to_pdf,
+    split_pages_to_files_zip,
+    ocr_pdf,
     ensure_temp_dirs,
     get_upload_path,
     get_output_path
 )
+
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+FRONTEND_DIST_DIR = os.path.join(PROJECT_ROOT, "frontend", "dist")
+FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
+FRONTEND_INDEX_FILE = os.path.join(FRONTEND_DIST_DIR, "index.html")
+
+
+@dataclass
+class SessionState:
+    updated_at: float = field(default_factory=lambda: time.time())
+    pending_question: str | None = None
+    pending_options: list[str] | None = None
+    pending_base_instruction: str | None = None
+    last_success_prompt: str | None = None
+    last_success_intent: ParsedIntent | list[ParsedIntent] | None = None
+
+
+_SESSIONS: dict[str, SessionState] = {}
+_SESSIONS_LOCK = Lock()
+
+
+def _get_session(session_id: str | None) -> SessionState | None:
+    if not session_id:
+        return None
+    with _SESSIONS_LOCK:
+        st = _SESSIONS.get(session_id)
+        if st is None:
+            st = SessionState()
+            _SESSIONS[session_id] = st
+        st.updated_at = time.time()
+        return st
+
+
+def _clear_pending(st: SessionState | None) -> None:
+    if not st:
+        return
+    st.pending_question = None
+    st.pending_options = None
+    st.pending_base_instruction = None
+    st.updated_at = time.time()
+
+
+def cleanup_old_sessions(max_age_minutes: int = 30) -> None:
+    cutoff = time.time() - (max_age_minutes * 60)
+    with _SESSIONS_LOCK:
+        stale = [sid for sid, st in _SESSIONS.items() if st.updated_at < cutoff]
+        for sid in stale:
+            _SESSIONS.pop(sid, None)
+
+
+def _infer_slot_kind(question: str) -> str:
+    q = (question or "").lower()
+    if not q:
+        return "freeform"
+    if ("which" in q and "first" in q) or ("happen first" in q):
+        return "order"
+    if "rotate" in q and "degree" in q:
+        return "rotate_degrees"
+    if "compress" in q and ("mb" in q or "size" in q or "target" in q):
+        return "compress_size"
+    if ("split" in q or "keep" in q or "extract" in q) and ("page" in q or "pages" in q):
+        return "keep_pages"
+    if ("delete" in q or "remove" in q) and ("page" in q or "pages" in q):
+        return "delete_pages"
+    if "convert" in q and ("what" in q or "which" in q):
+        return "convert_format"
+    return "freeform"
+
+
+def _build_prompt_from_reply(base_instruction: str, question: str, user_reply: str) -> str:
+    """Server-side slot filling.
+
+    IMPORTANT: binds the reply to the currently open slot only.
+    Does not reinterpret the full intent.
+    """
+    base = normalize_whitespace(base_instruction)
+    reply = normalize_whitespace(user_reply)
+    kind = _infer_slot_kind(question)
+
+    # If user clicked a full option (contains explicit order), just use it (use precompiled pattern).
+    if kind == "order":
+        if RE_EXPLICIT_ORDER.search(reply):
+            return reply
+        # Some short replies like "compress first" → keep base, just append.
+        return normalize_whitespace(f"{base} {reply}") if base else reply
+
+    if kind == "rotate_degrees":
+        r = reply.lower()
+        m = RE_ROTATE_DEGREES.fullmatch(r)
+        if m:
+            return normalize_whitespace(f"{base} rotate {m.group(1)} degrees") if base else f"rotate {m.group(1)} degrees"
+        if "left" in r:
+            return normalize_whitespace(f"{base} rotate left") if base else "rotate left"
+        if "right" in r:
+            return normalize_whitespace(f"{base} rotate right") if base else "rotate right"
+        if "flip" in r:
+            return normalize_whitespace(f"{base} rotate 180 degrees") if base else "rotate 180 degrees"
+        return normalize_whitespace(f"{base} {reply}") if base else reply
+
+    if kind == "compress_size":
+        r = reply.lower().replace(" ", "")
+        # numeric-only means MB
+        if re.fullmatch(r"\d+", r):
+            r = f"{r}mb"
+        if re.fullmatch(r"\d+(mb|kb)", r):
+            return normalize_whitespace(f"{base} compress to {r}") if base else f"compress to {r}"
+        # allow "1mb" / "to 2mb" (use precompiled pattern)
+        m = RE_COMPRESS_SIZE.search(reply)
+        if m:
+            return normalize_whitespace(f"{base} compress to {m.group(1)}{m.group(2).lower()}") if base else f"compress to {m.group(1)}{m.group(2).lower()}"
+        return normalize_whitespace(f"{base} {reply}") if base else reply
+
+    if kind in {"keep_pages", "delete_pages"}:
+        r = reply.lower()
+        # user may respond "2-4" or "3" etc
+        if re.fullmatch(r"\d+(\s*-\s*\d+)?(\s*,\s*\d+(\s*-\s*\d+)?)*", r):
+            prefix = "keep pages" if kind == "keep_pages" else "delete pages"
+            return normalize_whitespace(f"{base} {prefix} {reply}") if base else normalize_whitespace(f"{prefix} {reply}")
+        return normalize_whitespace(f"{base} {reply}") if base else reply
+
+    if kind == "convert_format":
+        r = reply.lower().strip()
+        if r in {"png", "jpg", "jpeg"}:
+            return normalize_whitespace(f"{base} export pages as {r} images") if base else f"export pages as {r} images"
+        if r in {"docx", "word"}:
+            return normalize_whitespace(f"{base} convert to docx") if base else "convert to docx"
+        if r == "txt":
+            return normalize_whitespace(f"{base} extract text") if base else "extract text"
+        if r == "ocr":
+            return normalize_whitespace(f"{base} ocr this") if base else "ocr this"
+        return normalize_whitespace(f"{base} {reply}") if base else reply
+
+    return normalize_whitespace(f"{base} {reply}") if base else reply
+
+
+def _resolve_uploaded_filename(requested: str, uploaded_files: list[str]) -> str:
+    """Resolve a potentially mistyped filename to one of the uploaded filenames.
+
+    - Exact (case-insensitive) match wins.
+    - If requested lacks extension, try adding .pdf.
+    - Otherwise fuzzy match with a conservative threshold.
+    """
+    if not uploaded_files:
+        return requested
+
+    if not requested:
+        return uploaded_files[0]
+
+    req = requested.strip()
+    req_lower = req.lower()
+
+    for f in uploaded_files:
+        if f.lower() == req_lower:
+            return f
+
+    if not any(req_lower.endswith(ext) for ext in (".pdf", ".docx", ".png", ".jpg", ".jpeg")):
+        for ext in (".pdf", ".png", ".jpg", ".jpeg", ".docx"):
+            candidate = req + ext
+            for f in uploaded_files:
+                if f.lower() == candidate.lower():
+                    return f
+
+    # Use optimized fuzzy matching from utils
+    best = fuzzy_match_string(req, uploaded_files, threshold=0.84)
+    if best:
+        return best
+
+    raise ValueError(
+        f"I couldn't match the file '{requested}' to your uploaded files. "
+        f"Available: {uploaded_files}"
+    )
+
+
+def _resolve_intent_filenames(intent: ParsedIntent | list[ParsedIntent], uploaded_files: list[str]) -> None:
+    """Mutate intent(s) in-place to correct file names based on uploaded files."""
+
+    intents = intent if isinstance(intent, list) else [intent]
+
+    for it in intents:
+        op = it.get_operation()
+        if not op:
+            continue
+
+        if it.operation_type == "merge":
+            op.files = [_resolve_uploaded_filename(f, uploaded_files) for f in op.files]
+        elif it.operation_type == "images_to_pdf":
+            op.files = [_resolve_uploaded_filename(f, uploaded_files) for f in op.files]
+        else:
+            if hasattr(op, "file") and getattr(op, "file", None):
+                op.file = _resolve_uploaded_filename(op.file, uploaded_files)
 
 
 # ============================================
@@ -64,41 +267,42 @@ app.add_middleware(
 # ============================================
 
 def cleanup_old_files():
-    """Delete output files older than 30 minutes"""
-    output_dir = "outputs"
-    if not os.path.exists(output_dir):
-        return
-    
-    current_time = time.time()
-    for filename in os.listdir(output_dir):
-        file_path = os.path.join(output_dir, filename)
-        if os.path.isfile(file_path):
-            file_age_seconds = current_time - os.path.getmtime(file_path)
-            if file_age_seconds > 30 * 60:  # 30 minutes in seconds
-                try:
-                    os.remove(file_path)
-                    print(f"🗑️  Deleted old file: {filename}")
-                except Exception as e:
-                    print(f"Warning: Failed to delete {filename}: {e}")
+    """Delete temporary files older than 10 minutes"""
+    for directory in ["uploads", "outputs"]:
+        if not os.path.exists(directory):
+            continue
+        
+        current_time = time.time()
+        for filename in os.listdir(directory):
+            file_path = os.path.join(directory, filename)
+            if os.path.isfile(file_path):
+                file_age_seconds = current_time - os.path.getmtime(file_path)
+                if file_age_seconds > 10 * 60:  # 10 minutes in seconds
+                    try:
+                        os.remove(file_path)
+                        print(f"[CLEANUP] Deleted old file from {directory}: {filename}")
+                    except Exception as e:
+                        print(f"Warning: Failed to delete {filename}: {e}")
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize directories on startup and schedule cleanup task"""
     ensure_temp_dirs()
-    print("✓ OrderMyPDF started successfully")
-    print(f"✓ Using LLM model: {settings.llm_model}")
+    print("[OK] OrderMyPDF started successfully")
+    print(f"[OK] Using LLM model: {settings.llm_model}")
     
     # Start background scheduler for cleanup
     scheduler = BackgroundScheduler()
-    scheduler.add_job(cleanup_old_files, 'interval', minutes=5)  # Run cleanup every 5 minutes
+    scheduler.add_job(cleanup_old_files, 'interval', minutes=2)  # Run cleanup every 2 minutes
+    scheduler.add_job(lambda: cleanup_old_sessions(30), 'interval', minutes=10)  # Purge idle sessions
     scheduler.start()
-    print("✓ Auto-cleanup scheduler started (files deleted after 30 minutes)")
+    print("[OK] Auto-cleanup scheduler started (files deleted after 10 minutes)")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("✓ OrderMyPDF shutting down")
+    print("[OK] OrderMyPDF shutting down")
 
 
 # ============================================
@@ -114,10 +318,20 @@ async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
     """
     file_names = []
     
+    allowed_exts = {".pdf", ".png", ".jpg", ".jpeg"}
+
     for file in files:
         # Validate file type
-        if not file.filename.endswith('.pdf'):
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.filename}. Only PDF files allowed.")
+        filename_lower = (file.filename or "").lower()
+        _, ext = os.path.splitext(filename_lower)
+        if ext not in allowed_exts:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid file type: {file.filename}. "
+                    "Allowed: PDF and common images (png/jpg/jpeg)."
+                ),
+            )
         
         # Validate file size
         file.file.seek(0, 2)  # Seek to end
@@ -131,8 +345,8 @@ async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
                 detail=f"File {file.filename} exceeds {settings.max_file_size_mb}MB limit"
             )
         
-        # Save file
-        file_path = get_upload_path(file.filename)
+        # Save file (always into uploads/)
+        file_path = os.path.join("uploads", file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
@@ -152,37 +366,285 @@ def execute_operation(intent: ParsedIntent) -> tuple[str, str]:
         ValueError: If operation fails
     """
     operation = intent.get_operation()
+
+    def require_pdf(name: str) -> None:
+        if not (name or "").lower().endswith(".pdf"):
+            raise ValueError("This operation requires a PDF input file.")
+
+    def require_image(name: str) -> None:
+        lower = (name or "").lower()
+        if not any(lower.endswith(ext) for ext in (".png", ".jpg", ".jpeg")):
+            raise ValueError("This operation requires image files (png/jpg/jpeg) as input.")
     
     if intent.operation_type == "merge":
+        for f in operation.files:
+            require_pdf(f)
         output_file = merge_pdfs(operation.files)
         message = f"Successfully merged {len(operation.files)} PDFs"
         return output_file, message
     
     elif intent.operation_type == "split":
+        require_pdf(operation.file)
         output_file = split_pdf(operation.file, operation.pages)
         message = f"Successfully extracted {len(operation.pages)} pages from {operation.file}"
         return output_file, message
     
     elif intent.operation_type == "delete":
+        require_pdf(operation.file)
         output_file = delete_pages(operation.file, operation.pages_to_delete)
         message = f"Successfully deleted {len(operation.pages_to_delete)} pages from {operation.file}"
         return output_file, message
     
     elif intent.operation_type == "compress":
-        output_file = compress_pdf(operation.file)
+        require_pdf(operation.file)
+        output_file = compress_pdf(operation.file, preset=(operation.preset or "ebook"))
         message = f"Successfully compressed {operation.file}"
         return output_file, message
     
     elif intent.operation_type == "pdf_to_docx":
+        require_pdf(operation.file)
         output_file = pdf_to_docx(operation.file)
         message = f"Successfully converted {operation.file} to DOCX"
         return output_file, message
     elif intent.operation_type == "compress_to_target":
+        require_pdf(operation.file)
         output_file = compress_pdf_to_target(operation.file, operation.target_mb)
         message = f"Compressed {operation.file} to under {operation.target_mb} MB"
         return output_file, message
+    elif intent.operation_type == "rotate":
+        require_pdf(operation.file)
+        output_file = rotate_pdf(operation.file, operation.degrees, operation.pages)
+        message = f"Rotated {operation.file} by {operation.degrees}°"
+        return output_file, message
+    elif intent.operation_type == "reorder":
+        require_pdf(operation.file)
+        output_file = reorder_pdf(operation.file, operation.new_order)
+        message = f"Reordered pages in {operation.file}"
+        return output_file, message
+    elif intent.operation_type == "watermark":
+        require_pdf(operation.file)
+        output_file = watermark_pdf(
+            operation.file,
+            operation.text,
+            opacity=(operation.opacity if operation.opacity is not None else 0.12),
+            angle=(operation.angle if operation.angle is not None else 30),
+        )
+        message = f"Added watermark to {operation.file}"
+        return output_file, message
+    elif intent.operation_type == "page_numbers":
+        require_pdf(operation.file)
+        output_file = add_page_numbers(
+            operation.file,
+            position=(operation.position or "bottom_center"),
+            start_at=(operation.start_at or 1),
+        )
+        message = f"Added page numbers to {operation.file}"
+        return output_file, message
+    elif intent.operation_type == "extract_text":
+        require_pdf(operation.file)
+        output_file = extract_text(operation.file, operation.pages)
+        message = f"Extracted text from {operation.file}"
+        return output_file, message
+    elif intent.operation_type == "pdf_to_images":
+        require_pdf(operation.file)
+        output_file = pdf_to_images_zip(
+            operation.file,
+            fmt=(operation.format or "png"),
+            dpi=(operation.dpi or 150),
+        )
+        message = f"Exported images from {operation.file}"
+        return output_file, message
+    elif intent.operation_type == "images_to_pdf":
+        for f in operation.files:
+            require_image(f)
+        output_file = images_to_pdf(operation.files)
+        message = f"Converted {len(operation.files)} image(s) to PDF"
+        return output_file, message
+    elif intent.operation_type == "split_to_files":
+        require_pdf(operation.file)
+        output_file = split_pages_to_files_zip(operation.file, operation.pages)
+        message = f"Split pages from {operation.file} into separate PDFs"
+        return output_file, message
+    elif intent.operation_type == "ocr":
+        require_pdf(operation.file)
+        output_file = ocr_pdf(
+            operation.file,
+            language=(operation.language or "eng"),
+            deskew=(operation.deskew if operation.deskew is not None else True),
+        )
+        message = f"OCR complete for {operation.file}"
+        return output_file, message
     else:
         raise ValueError(f"Unknown operation type: {intent.operation_type}")
+
+
+def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list[str]) -> tuple[str, str]:
+    """Execute multiple intents sequentially, feeding output of one into the next."""
+    if not intents:
+        raise ValueError("No operations provided")
+
+    current_file: str | None = None
+    messages: list[str] = []
+
+    for idx, intent in enumerate(intents, start=1):
+        op = intent.get_operation()
+
+        def require_pdf_name(name: str) -> None:
+            if not (name or "").lower().endswith(".pdf"):
+                raise ValueError("This step requires a PDF input file.")
+
+        # Determine input for this step
+        if idx == 1:
+            if intent.operation_type == "merge":
+                if not op.files or len(op.files) < 2:
+                    raise ValueError("Merge requires at least 2 files")
+            elif intent.operation_type == "images_to_pdf":
+                if not op.files:
+                    raise ValueError("images_to_pdf requires at least 1 image")
+            else:
+                # For non-merge, prefer the file specified by the model; fallback to first upload
+                if getattr(op, "file", None):
+                    current_file = op.file
+                elif uploaded_files:
+                    current_file = uploaded_files[0]
+                else:
+                    raise ValueError("No input file provided")
+        else:
+            if current_file is None:
+                raise ValueError("Pipeline has no current file")
+
+        # Validate chain compatibility
+        if idx > 1 and intent.operation_type == "merge":
+            raise ValueError("Merge can only be the first step in a multi-step request")
+        if idx > 1 and intent.operation_type == "images_to_pdf":
+            raise ValueError("images_to_pdf can only be the first step in a multi-step request")
+
+        # If we already converted to DOCX, we cannot apply PDF ops after
+        if current_file and current_file.lower().endswith(".docx"):
+            raise ValueError("Cannot run operations after converting to DOCX")
+        if current_file and current_file.lower().endswith(".txt"):
+            raise ValueError("Cannot run operations after extracting text")
+        if current_file and current_file.lower().endswith(".zip"):
+            raise ValueError("Cannot run operations after producing a ZIP output")
+
+        # Execute step
+        if intent.operation_type == "merge":
+            output_name = f"multi_step_{idx}_merged.pdf"
+            current_file = merge_pdfs(op.files, output_name=output_name)
+            messages.append(f"Merged {len(op.files)} PDFs")
+
+        elif intent.operation_type == "images_to_pdf":
+            output_name = f"multi_step_{idx}_images_to_pdf.pdf"
+            current_file = images_to_pdf(op.files, output_name=output_name)
+            messages.append(f"Images→PDF ({len(op.files)} images)")
+
+        elif intent.operation_type == "split":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_split.pdf"
+            current_file = split_pdf(current_file, op.pages, output_name=output_name)
+            messages.append(f"Split pages {op.pages}")
+
+        elif intent.operation_type == "delete":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_deleted.pdf"
+            current_file = delete_pages(current_file, op.pages_to_delete, output_name=output_name)
+            messages.append(f"Deleted pages {op.pages_to_delete}")
+
+        elif intent.operation_type == "compress":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_compressed.pdf"
+            preset = getattr(op, "preset", None) or "ebook"
+            current_file = compress_pdf(current_file, output_name=output_name, preset=preset)
+            messages.append("Compressed")
+
+        elif intent.operation_type == "compress_to_target":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_compressed_target.pdf"
+            current_file = compress_pdf_to_target(current_file, op.target_mb, output_name=output_name)
+            messages.append(f"Compressed to under {op.target_mb} MB")
+
+        elif intent.operation_type == "pdf_to_docx":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_converted.docx"
+            current_file = pdf_to_docx(current_file, output_name=output_name)
+            messages.append("Converted to DOCX")
+
+        elif intent.operation_type == "rotate":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_rotated.pdf"
+            current_file = rotate_pdf(current_file, op.degrees, op.pages, output_name=output_name)
+            messages.append(f"Rotated {op.degrees}°")
+
+        elif intent.operation_type == "reorder":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_reordered.pdf"
+            current_file = reorder_pdf(current_file, op.new_order, output_name=output_name)
+            messages.append("Reordered pages")
+
+        elif intent.operation_type == "watermark":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_watermarked.pdf"
+            current_file = watermark_pdf(
+                current_file,
+                op.text,
+                opacity=(op.opacity if op.opacity is not None else 0.12),
+                angle=(op.angle if op.angle is not None else 30),
+                output_name=output_name,
+            )
+            messages.append("Watermarked")
+
+        elif intent.operation_type == "page_numbers":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_page_numbers.pdf"
+            current_file = add_page_numbers(
+                current_file,
+                position=(op.position or "bottom_center"),
+                start_at=(op.start_at or 1),
+                output_name=output_name,
+            )
+            messages.append("Added page numbers")
+
+        elif intent.operation_type == "extract_text":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_extracted.txt"
+            current_file = extract_text(current_file, op.pages, output_name=output_name)
+            messages.append("Extracted text")
+
+        elif intent.operation_type == "pdf_to_images":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_images.zip"
+            current_file = pdf_to_images_zip(
+                current_file,
+                fmt=(op.format or "png"),
+                dpi=(op.dpi or 150),
+                output_name=output_name,
+            )
+            messages.append("Exported images")
+
+        elif intent.operation_type == "split_to_files":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_split_pages.zip"
+            current_file = split_pages_to_files_zip(current_file, op.pages, output_name=output_name)
+            messages.append("Split to separate PDFs")
+
+        elif intent.operation_type == "ocr":
+            require_pdf_name(current_file)
+            output_name = f"multi_step_{idx}_ocr.pdf"
+            current_file = ocr_pdf(
+                current_file,
+                language=(op.language or "eng"),
+                deskew=(op.deskew if op.deskew is not None else True),
+                output_name=output_name,
+            )
+            messages.append("OCR")
+
+        else:
+            raise ValueError(f"Unknown operation type: {intent.operation_type}")
+
+    if not current_file:
+        raise ValueError("Pipeline produced no output")
+
+    return current_file, " → ".join(messages)
 
 
 # ============================================
@@ -203,7 +665,15 @@ async def root():
 @app.post("/process", response_model=ProcessResponse)
 async def process_pdfs(
     files: List[UploadFile] = File(..., description="PDF files to process"),
-    prompt: str = Form(..., description="Natural language instruction")
+    prompt: str = Form(..., description="Natural language instruction"),
+    context_question: str | None = Form(
+        default=None,
+        description="Optional last assistant question (used to interpret short replies like '90')",
+    ),
+    session_id: str | None = Form(
+        default=None,
+        description="Optional session id for multi-turn slot filling and one-shot clarifications",
+    ),
 ):
     """
     Main endpoint: Process PDFs based on natural language prompt.
@@ -228,10 +698,12 @@ async def process_pdfs(
         
         # Save uploaded files
         file_names = await save_uploaded_files(files)
+
+        session = _get_session(session_id)
         
         # Detect 'compress by X%' BEFORE calling AI parser
-        print(f"📝 Prompt: {prompt}")
-        print(f"📎 Files: {file_names}")
+        print(f"[REQ] Prompt: {prompt}")
+        print(f"[REQ] Files: {file_names}")
         percent_match = re.search(r"compress( this)?( pdf)? by (\d{1,3})%", prompt, re.IGNORECASE)
         if percent_match and file_names:
             percent = int(percent_match.group(3))
@@ -252,39 +724,115 @@ async def process_pdfs(
                         target_mb=target_mb
                     )
                 )
-                print(f"🤖 Auto-generated compress_to_target intent for {percent}%: {target_mb} MB")
+                print(f"[AI] Auto-generated compress_to_target intent for {percent}%: {target_mb} MB")
             else:
                 return ProcessResponse(
                     status="error",
                     message=f"File not found for compression: {file_name}"
                 )
         else:
-            clarification_result = clarify_intent(prompt, file_names)
+            # "do the same again" / "repeat" shortcut (must not re-parse)
+            if session and session.last_success_intent is not None:
+                if re.search(r"\b(same|again|repeat|do it again|do that again)\b", (prompt or ""), re.IGNORECASE):
+                    intent = session.last_success_intent
+                    _resolve_intent_filenames(intent, file_names)
+                    try:
+                        if isinstance(intent, list):
+                            output_file, message = execute_operation_pipeline(intent, file_names)
+                            operation_name = "multi"
+                        else:
+                            output_file, message = execute_operation(intent)
+                            operation_name = intent.operation_type
+                    except FileNotFoundError as e:
+                        raise HTTPException(status_code=404, detail=str(e))
+                    except ValueError as e:
+                        raise HTTPException(status_code=400, detail=str(e))
+                    except Exception as e:
+                        raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+
+                    session.last_success_prompt = session.last_success_prompt or prompt
+                    session.last_success_intent = intent
+                    _clear_pending(session)
+                    return ProcessResponse(
+                        status="success",
+                        operation=operation_name,
+                        output_file=output_file,
+                        message=message,
+                    )
+
+            # Prefer UI-provided question; fallback to session's last asked question.
+            effective_question = (context_question or "") or (session.pending_question if session else "") or ""
+
+            # If we have a pending question, treat short replies as slot values and rebuild
+            # a full prompt that preserves already-locked steps.
+            prompt_to_parse = prompt
+            if session and session.pending_question and session.pending_base_instruction:
+                normalized_reply = _normalize_ws(prompt)
+                normalized_options = {_normalize_ws(o) for o in (session.pending_options or [])}
+                if normalized_reply and normalized_reply in normalized_options:
+                    prompt_to_parse = prompt
+                else:
+                    # Numeric-only or very short replies are almost always slot-fills.
+                    if len(normalized_reply.split()) <= 6 or re.fullmatch(r"[0-9,\-\s]+", (prompt or "").strip()):
+                        prompt_to_parse = _build_prompt_from_reply(
+                            session.pending_base_instruction,
+                            session.pending_question,
+                            prompt,
+                        )
+
+            clarification_result = clarify_intent(prompt_to_parse, file_names, last_question=effective_question)
             if clarification_result.intent:
                 intent = clarification_result.intent
-                print(f"🤖 Parsed intent: {intent.operation_type}")
+                if isinstance(intent, list):
+                    print(f"[AI] Parsed multi-operation intent: {len(intent)} steps")
+                else:
+                    print(f"[AI] Parsed intent: {intent.operation_type}")
+                _clear_pending(session)
             else:
-                print(f"❓ Clarification needed: {clarification_result.clarification}")
+                print(f"[AI] Clarification needed: {clarification_result.clarification}")
+                if session:
+                    session.pending_question = clarification_result.clarification
+                    session.pending_options = clarification_result.options
+                    # Persist the full plan prompt so far, not the raw short reply.
+                    session.pending_base_instruction = prompt_to_parse
                 return ProcessResponse(
                     status="error",
-                    message=clarification_result.clarification
+                    message=clarification_result.clarification,
+                    options=clarification_result.options
                 )
+
+        # Fix common typos in filenames chosen by the model (or user)
+        _resolve_intent_filenames(intent, file_names)
         
-        # Execute the operation
+        # Execute the operation(s)
         try:
-            output_file, message = execute_operation(intent)
-            print(f"✓ {message}")
+            if isinstance(intent, list):
+                output_file, message = execute_operation_pipeline(intent, file_names)
+                print(f"[OK] {message}")
+                operation_name = "multi"
+            else:
+                output_file, message = execute_operation(intent)
+                print(f"[OK] {message}")
+                operation_name = intent.operation_type
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+
+        if session:
+            # If we rebuilt a prompt via slot filling, keep that as the canonical plan prompt.
+            try:
+                session.last_success_prompt = prompt_to_parse  # type: ignore[name-defined]
+            except Exception:
+                session.last_success_prompt = prompt
+            session.last_success_intent = intent
         
         # Delete only the uploaded files (keep output file for download)
         try:
             for file_name in file_names:
-                upload_path = get_upload_path(file_name)
+                upload_path = os.path.join("uploads", file_name)
                 if os.path.exists(upload_path):
                     os.remove(upload_path)
             # Note: Output file is kept available for download
@@ -294,7 +842,7 @@ async def process_pdfs(
 
         return ProcessResponse(
             status="success",
-            operation=intent.operation_type,
+            operation=operation_name,
             output_file=output_file,
             message=message
         )
@@ -320,9 +868,19 @@ async def download_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Serve correct content-type for non-PDF outputs
+    lower = filename.lower()
+    media_type = "application/pdf"
+    if lower.endswith(".docx"):
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif lower.endswith(".zip"):
+        media_type = "application/zip"
+    elif lower.endswith(".txt"):
+        media_type = "text/plain"
+
     return FileResponse(
         file_path,
-        media_type="application/pdf",
+        media_type=media_type,
         filename=filename
     )
 
@@ -355,28 +913,40 @@ async def cleanup_temp_files():
 # ============================================
 # STATIC FILES (Pre-built frontend)
 # ============================================
+# IMPORTANT: Register static files AFTER all other routes
+# so that API endpoints take priority
 
-import os
-
-# Check if frontend dist exists and serve it
-if os.path.exists("frontend/dist"):
-    print("✓ Frontend dist folder found - serving static files")
+if os.path.exists(FRONTEND_DIST_DIR):
+    print("[OK] Frontend dist folder found - serving static files")
     
-    # Mount assets first
-    app.mount(
-        "/assets",
-        StaticFiles(directory="frontend/dist/assets"),
-        name="assets"
-    )
-    
-    # Mount everything else at root - serves index.html for SPA routing
-    app.mount(
-        "/",
-        StaticFiles(directory="frontend/dist", html=True),
-        name="static"
-    )
+    # Mount assets directory with specific path (doesn't conflict with /api or /process)
+    try:
+        from fastapi.staticfiles import StaticFiles
+        app.mount(
+            "/assets",
+            StaticFiles(directory=FRONTEND_ASSETS_DIR),
+            name="assets"
+        )
+    except Exception as e:
+        print(f"[WARN] Could not mount /assets: {e}")
 else:
-    print("⚠️  Frontend dist folder NOT found - API only mode")
+    print("[WARN] Frontend dist folder NOT found - API only mode")
+
+
+if os.path.exists(FRONTEND_INDEX_FILE):
+
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend_root():
+        return FileResponse(FRONTEND_INDEX_FILE, media_type="text/html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend_spa_fallback(full_path: str):
+        # Let real API routes take priority (this handler is registered last).
+        # If a requested file exists in dist (e.g., favicon), serve it; otherwise serve SPA index.
+        candidate = os.path.join(FRONTEND_DIST_DIR, full_path)
+        if os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_INDEX_FILE, media_type="text/html")
 
 
 # ============================================
