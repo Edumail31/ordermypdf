@@ -307,7 +307,7 @@ def _detect_op_families(text: str) -> set[str]:
         ops.add("delete")
     if re.search(r"\bcompress\b|\bsmaller\b|\bsize\b", s):
         ops.add("compress")
-    if re.search(r"\breorder\b|\border\b|\bswap\b", s):
+    if re.search(r"\breorder\b|\border\b|\bswap\b|\breverse\b", s):
         ops.add("reorder")
     if re.search(r"\bwatermark\b", s):
         ops.add("watermark")
@@ -796,19 +796,30 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: reorder pages to ...
-        if file_names and re.search(r"\breorder\b|\bswap\b", prompt_for_match, re.IGNORECASE):
+        # Pattern: reorder/reverse pages to ...
+        if file_names and re.search(r"\breorder\b|\bswap\b|\breverse\b", prompt_for_match, re.IGNORECASE):
+            is_reverse = bool(re.search(r"\breverse\b", prompt_for_match, re.IGNORECASE))
             m = re.search(r"\b(?:to|as)\b\s*([0-9,\s]+)", user_prompt, re.IGNORECASE)
+            
+            # If user said "reverse" without specific order, return intent with special marker
+            if is_reverse and not m:
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="reorder",
+                        reorder={"operation": "reorder", "file": file_names[0], "new_order": "reverse"},
+                    )
+                )
+            
             if not m:
                 return ClarificationResult(
                     clarification="What is the new page order? (example: 2,1,3)",
-                    options=["reorder pages to 2,1,3"],
+                    options=["reorder pages to 2,1,3", "reverse all pages"],
                 )
             order = [int(x) for x in re.findall(r"\d+", m.group(1))]
             if not order:
                 return ClarificationResult(
                     clarification="What is the new page order? (example: 2,1,3)",
-                    options=["reorder pages to 2,1,3"],
+                    options=["reorder pages to 2,1,3", "reverse all pages"],
                 )
             return ClarificationResult(
                 intent=ParsedIntent(

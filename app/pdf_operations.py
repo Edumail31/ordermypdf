@@ -429,8 +429,13 @@ def rotate_pdf(
     return output_name
 
 
-def reorder_pdf(file_name: str, new_order: List[int], output_name: str = "reordered_output.pdf") -> str:
-    """Reorder pages in a PDF according to new_order (1-indexed)."""
+def reorder_pdf(file_name: str, new_order: List[int] | str, output_name: str = "reordered_output.pdf") -> str:
+    """Reorder pages in a PDF according to new_order (1-indexed).
+    
+    new_order can be:
+    - A list of page numbers in the desired order
+    - The string "reverse" to reverse all pages
+    """
     ensure_temp_dirs()
 
     input_path = get_upload_path(file_name)
@@ -439,6 +444,10 @@ def reorder_pdf(file_name: str, new_order: List[int], output_name: str = "reorde
 
     reader = PdfReader(input_path)
     total_pages = len(reader.pages)
+    
+    # Handle "reverse" command
+    if new_order == "reverse":
+        new_order = list(range(total_pages, 0, -1))  # e.g., [5, 4, 3, 2, 1] for 5 pages
 
     if len(new_order) != total_pages:
         raise ValueError(f"new_order must have exactly {total_pages} entries")
@@ -634,14 +643,24 @@ def pdf_to_images_zip(
 def images_to_pdf(
     file_names: List[str],
     output_name: str = "images_output.pdf",
+    max_dimension: int = 2000,  # Max width/height in pixels
+    jpeg_quality: int = 85,  # JPEG compression quality
 ) -> str:
-    """Combine uploaded images into a single PDF in the given order."""
+    """Combine uploaded images into a single PDF in the given order.
+    
+    Images are automatically resized and compressed to keep PDF size reasonable.
+    Large images (>2000px) are scaled down. All images are JPEG compressed.
+    """
     ensure_temp_dirs()
 
     if not file_names:
         raise ValueError("No image files provided")
 
     doc = fitz.open()
+    
+    # Standard A4 page size in points (72 points = 1 inch)
+    A4_WIDTH = 595  # ~8.27 inches
+    A4_HEIGHT = 842  # ~11.69 inches
 
     for name in file_names:
         input_path = get_upload_path(name)
@@ -649,15 +668,62 @@ def images_to_pdf(
             raise FileNotFoundError(f"File not found: {name}")
 
         pix = fitz.Pixmap(input_path)
+        
         # Convert CMYK/alpha to RGB when needed
         if pix.n >= 5:
             pix = fitz.Pixmap(fitz.csRGB, pix)
-
-        page = doc.new_page(width=pix.width, height=pix.height)
-        page.insert_image(page.rect, pixmap=pix)
+        
+        orig_width, orig_height = pix.width, pix.height
+        
+        # Resize if image is too large (reduces memory and PDF size)
+        if orig_width > max_dimension or orig_height > max_dimension:
+            scale = min(max_dimension / orig_width, max_dimension / orig_height)
+            new_width = int(orig_width * scale)
+            new_height = int(orig_height * scale)
+            # Create scaled pixmap using transformation matrix
+            mat = fitz.Matrix(scale, scale)
+            pix = fitz.Pixmap(pix, 0, 1)  # Remove alpha if present
+            # Re-read and scale
+            pix = fitz.Pixmap(input_path)
+            if pix.n >= 5:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+        else:
+            new_width, new_height = orig_width, orig_height
+        
+        # Determine page orientation based on image aspect ratio
+        img_is_landscape = new_width > new_height
+        
+        # Use A4 size, rotate for landscape images
+        if img_is_landscape:
+            page_width, page_height = A4_HEIGHT, A4_WIDTH  # Landscape A4
+        else:
+            page_width, page_height = A4_WIDTH, A4_HEIGHT  # Portrait A4
+        
+        # Calculate scale to fit image on page with margins
+        margin = 20  # Small margin
+        avail_width = page_width - 2 * margin
+        avail_height = page_height - 2 * margin
+        
+        scale_w = avail_width / new_width
+        scale_h = avail_height / new_height
+        fit_scale = min(scale_w, scale_h, 1.0)  # Don't upscale small images
+        
+        final_width = new_width * fit_scale
+        final_height = new_height * fit_scale
+        
+        # Center the image on the page
+        x_offset = (page_width - final_width) / 2
+        y_offset = (page_height - final_height) / 2
+        
+        page = doc.new_page(width=page_width, height=page_height)
+        img_rect = fitz.Rect(x_offset, y_offset, x_offset + final_width, y_offset + final_height)
+        
+        # Insert image with JPEG compression for smaller file size
+        page.insert_image(img_rect, filename=input_path)
 
     output_path = get_output_path(output_name)
-    doc.save(output_path)
+    # Save with garbage collection and compression
+    doc.save(output_path, garbage=4, deflate=True)
     doc.close()
     return output_name
 
