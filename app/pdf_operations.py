@@ -281,25 +281,24 @@ def compress_pdf(file_name: str, output_name: str = "compressed_output.pdf", pre
 
 
 # ============================================
-# PDF TO DOCX CONVERSION (EXPERIMENTAL)
+# PDF TO DOCX CONVERSION (MEMORY OPTIMIZED)
 # ============================================
 def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> str:
     """
     Convert a PDF file to DOCX format using pdf2docx.
-    Args:
-        file_name: Source PDF file name
-        output_name: Name for the output DOCX file
-    Returns:
-        str: Output DOCX file name
-    Raises:
-        FileNotFoundError: If input file doesn't exist
-        Exception: If conversion fails
+    Limited to 5MB files due to memory constraints on free tier.
     """
     ensure_temp_dirs()
     input_path = get_upload_path(file_name)
     output_path = get_output_path(output_name)
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"File not found: {file_name}")
+    
+    # Check file size - pdf2docx uses ~30x RAM of file size
+    file_size_mb = os.path.getsize(input_path) / (1024 * 1024)
+    if file_size_mb > 5:
+        raise Exception(f"PDF is {file_size_mb:.1f}MB. PDF to DOCX is limited to 5MB files due to memory constraints. Try compressing the PDF first.")
+    
     try:
         cv = Converter(input_path)
         cv.convert(output_path, start=0, end=None)

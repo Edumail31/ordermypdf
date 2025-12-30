@@ -580,12 +580,6 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false); // true during upload, false during processing
   const [processingMessage, setProcessingMessage] = useState("");
   const currentJobIdRef = useRef(null);
-  
-  // Pre-upload state - files upload immediately when selected
-  const [preUploadId, setPreUploadId] = useState(null); // ID from /preupload endpoint
-  const [preUploadProgress, setPreUploadProgress] = useState(0); // 0-100
-  const [preUploadStatus, setPreUploadStatus] = useState("idle"); // "idle" | "uploading" | "ready" | "error"
-  const preUploadXhrRef = useRef(null); // XHR for cancellation
 
   const statusPhrases = useMemo(
     () => [
@@ -703,13 +697,8 @@ export default function App() {
         }
 
         const statusData = await statusRes.json();
-        setProcessingMessage(statusData.message || "Processing...");
-
-        // Get dynamic estimated time from backend
-        const estRemaining = statusData.estimated_remaining || 0;
-        const estStr = estRemaining < 60 
-          ? `~${estRemaining}s` 
-          : `~${Math.floor(estRemaining / 60)}m ${estRemaining % 60}s`;
+        const msg = statusData.message || "Processing...";
+        setProcessingMessage(msg);
 
         setMessages((prev) => {
           const trimmed = prev.filter((m) => m.tone !== "status");
@@ -719,7 +708,7 @@ export default function App() {
               id: makeId(),
               role: "agent",
               tone: "status",
-              text: `${statusData.message || "Processing..."} (Est: ${estStr})`,
+              text: `${msg} (${statusData.progress || 0}%)`,
             },
           ];
         });
@@ -897,98 +886,20 @@ export default function App() {
   }, [loading]);
 
   // Start pre-upload immediately when files are selected
-  const startPreUpload = useCallback(async (selectedFiles) => {
-    if (!selectedFiles || selectedFiles.length === 0) return;
-    
-    // Cancel any existing pre-upload
-    if (preUploadXhrRef.current) {
-      preUploadXhrRef.current.abort();
-    }
-    
-    // Reset pre-upload state
-    setPreUploadId(null);
-    setPreUploadProgress(0);
-    setPreUploadStatus("uploading");
-    
-    const formData = new FormData();
-    selectedFiles.forEach((file) => formData.append("files", file));
-    
-    try {
-      const result = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        preUploadXhrRef.current = xhr;
-        
-        // Set timeout (10 minutes for large files)
-        xhr.timeout = 600000;
-        
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            setPreUploadProgress(percent);
-          }
-        });
-        
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch (e) {
-              reject(new Error("Invalid server response"));
-            }
-          } else if (xhr.status === 0) {
-            reject(new Error("Connection lost"));
-          } else {
-            reject(new Error(`Upload failed (${xhr.status})`));
-          }
-        });
-        
-        xhr.addEventListener("error", () => reject(new Error("Connection failed")));
-        xhr.addEventListener("timeout", () => reject(new Error("Upload timed out")));
-        xhr.addEventListener("abort", () => reject(new Error("Cancelled")));
-        
-        xhr.open("POST", "/preupload");
-        xhr.send(formData);
-      });
-      
-      // Pre-upload successful
-      setPreUploadId(result.upload_id);
-      setPreUploadStatus("ready");
-      setPreUploadProgress(100);
-      console.log("[PreUpload] Complete:", result.upload_id);
-      
-    } catch (err) {
-      console.error("[PreUpload] Failed:", err);
-      setPreUploadStatus("error");
-      // Don't show error toast - user can still use normal upload on submit
-    } finally {
-      preUploadXhrRef.current = null;
-    }
-  }, []);
-  
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files || []);
     setFiles(selected);
     setLastFileName(selected.length ? selected[selected.length - 1].name : "");
 
-    // Reset any previous pre-upload
-    setPreUploadId(null);
-    setPreUploadProgress(0);
-    setPreUploadStatus("idle");
-
-    // Show warning immediately when large files are selected
+    // Show warning for large files
     if (selected.length > 0) {
       const totalSizeMB = getTotalFileSizeMB(selected);
-      if (totalSizeMB > 60) {
+      if (totalSizeMB > 50) {
         showToast(
-          `⚠️ Large file (${Math.round(
-            totalSizeMB
-          )}MB) detected. Upload starting...`,
+          `⚠️ Large file (${Math.round(totalSizeMB)}MB). Processing may take longer.`,
           4000
         );
       }
-      
-      // Start pre-upload immediately!
-      startPreUpload(selected);
     }
   };
 
@@ -1109,18 +1020,11 @@ export default function App() {
     // Chat-style: clear input immediately after send
     setPrompt("");
 
-    // Show mobile-friendly upload message
-    // Determine status message based on pre-upload state
+    // Simple status message
     const getStatusMessage = () => {
-      if (preUploadStatus === "ready") {
-        return "Files ready! Starting processing...";
-      } else if (preUploadStatus === "uploading") {
-        return `Waiting for upload... ${preUploadProgress}%`;
-      } else {
-        return isMobileDevice()
-          ? "Uploading files... (Keep app open)"
-          : "Uploading files...";
-      }
+      return isMobileDevice()
+        ? "Uploading files... (Keep app open)"
+        : "Uploading files...";
     };
 
     setMessages((prev) => [
@@ -1147,62 +1051,9 @@ export default function App() {
 
       let jobId;
 
-      // Try to use pre-upload if it's ready, otherwise do normal upload
-      // Note: preUploadStatus might be stale, so we also check preUploadId directly
-      const canUsePreUpload = preUploadId && preUploadStatus === "ready";
-      
-      if (canUsePreUpload) {
-        // Use the pre-uploaded files - instant!
-        console.log("[Submit] Using pre-uploaded files:", preUploadId);
-        setIsUploading(false);
-        setUploadProgress(100);
-        
-        const formData = new FormData();
-        formData.append("upload_id", preUploadId);
-        formData.append("prompt", userText);
-        if (pendingClarification?.question) {
-          formData.append("context_question", pendingClarification.question);
-        }
-        formData.append("session_id", sessionIdRef.current);
-        
-        try {
-          const response = await fetch("/submit-with-upload", {
-            method: "POST",
-            body: formData,
-            signal: abortControllerRef.current.signal,
-          });
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            // If preupload expired/not found, fall through to normal upload
-            if (response.status === 404) {
-              console.log("[Submit] Pre-upload expired, falling back to normal upload");
-              throw new Error("FALLBACK_TO_NORMAL");
-            }
-            throw new Error(errorData.detail || `Server error (${response.status})`);
-          }
-          
-          const result = await response.json();
-          jobId = result.job_id;
-          
-          // Clear pre-upload state
-          setPreUploadId(null);
-          setPreUploadStatus("idle");
-        } catch (err) {
-          if (err.message === "FALLBACK_TO_NORMAL") {
-            // Fall through to normal upload
-            setPreUploadId(null);
-            setPreUploadStatus("idle");
-          } else {
-            throw err;
-          }
-        }
-      }
-      
-      // If we don't have a jobId yet (no preupload or it failed), do normal upload
-      if (!jobId) {
-        console.log("[Submit] Doing regular upload");
-        setIsUploading(true);
+      // Direct upload with progress tracking
+      console.log("[Submit] Uploading files...");
+      setIsUploading(true);
         
         const formData = new FormData();
         files.forEach((file) => formData.append("files", file));
@@ -1265,7 +1116,6 @@ export default function App() {
         jobId = uploadResult.job_id;
         setIsUploading(false);
         setUploadProgress(100);
-      }
 
       currentJobIdRef.current = jobId;
 
@@ -1275,7 +1125,7 @@ export default function App() {
       // Release wake lock
       await releaseWakeLock(wakeLockRef.current);
       wakeLockRef.current = null;
-      setProcessingMessage("Processing started...");
+      setProcessingMessage("Processing...");
 
       // Update status message for processing
       setMessages((prev) => {
@@ -1289,7 +1139,7 @@ export default function App() {
             id: makeId(),
             role: "agent",
             tone: "status",
-            text: `Processing... (Est: ~30s)`,
+            text: `Processing...`,
           },
         ];
       });
@@ -1317,17 +1167,12 @@ export default function App() {
         }
 
         const statusData = await statusRes.json();
+        const msg = statusData.message || "Processing...";
 
         // Update processing message
-        setProcessingMessage(statusData.message || "Processing...");
+        setProcessingMessage(msg);
 
-        // Get dynamic estimated time from backend
-        const estRemaining = statusData.estimated_remaining || 0;
-        const estStr = estRemaining < 60 
-          ? `~${estRemaining}s` 
-          : `~${Math.floor(estRemaining / 60)}m ${estRemaining % 60}s`;
-
-        // Update the status bubble with dynamic estimated time
+        // Update the status bubble - simple progress display
         setMessages((prev) => {
           const trimmed = prev.filter((m, idx) => {
             if (idx !== prev.length - 1) return true;
@@ -1339,7 +1184,7 @@ export default function App() {
               id: makeId(),
               role: "agent",
               tone: "status",
-              text: `${statusData.message || "Processing..."} (Est: ${estStr})`,
+              text: `${msg} (${statusData.progress || 0}%)`,
             },
           ];
         });
@@ -1716,24 +1561,8 @@ export default function App() {
                         )}
                       </div>
                       {files.length ? (
-                        <div className="mt-1 text-[11px]">
-                          {preUploadStatus === "uploading" ? (
-                            <span className="text-cyan-300 flex items-center gap-1">
-                              {Icons.upload} Uploading... {preUploadProgress}%
-                            </span>
-                          ) : preUploadStatus === "ready" ? (
-                            <span className="text-green-300 flex items-center gap-1">
-                              {Icons.checkCircle} Ready! Type your command.
-                            </span>
-                          ) : preUploadStatus === "error" ? (
-                            <span className="text-amber-300">
-                              Will retry on submit.
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">
-                              {hasMultiple ? "Processing all files." : "Ready to process."}
-                            </span>
-                          )}
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          {hasMultiple ? "Processing all files." : "Ready to process."}
                         </div>
                       ) : null}
                     </div>

@@ -227,5 +227,5 @@ class JobQueue:
             }
 
 
-# Global job queue instance
-job_queue = JobQueue(max_concurrent=2, cleanup_after_minutes=30)
+# Global job queue instance - max 1 concurrent to stay under 512MB RAM
+job_queue = JobQueue(max_concurrent=1, cleanup_after_minutes=15)
