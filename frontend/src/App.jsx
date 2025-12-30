@@ -1,11 +1,34 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  requestWakeLock,
-  releaseWakeLock,
-  onServiceWorkerMessage,
-  isMobileDevice,
-  getUploadCapabilities,
-} from "./backgroundUpload";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+
+// Simple mobile detection
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+}
+
+// Simple wake lock helper
+async function requestWakeLock() {
+  if ("wakeLock" in navigator) {
+    try {
+      return await navigator.wakeLock.request("screen");
+    } catch (e) {
+      console.log("Wake lock not available:", e);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function releaseWakeLock(lock) {
+  if (lock) {
+    try {
+      await lock.release();
+    } catch (e) {
+      // Ignore
+    }
+  }
+}
 
 function cn(...parts) {
   return parts.filter(Boolean).join(" ");
@@ -247,11 +270,11 @@ function getTotalFileSizeMB(files) {
 // Estimate wait time based on file size and operation (processing only, not upload)
 function estimateWaitTime(sizeMB, prompt) {
   const lower = (prompt || "").toLowerCase();
-  
+
   // Base processing time (server-side, after upload completes)
   // These are calibrated based on actual Render server performance
   let baseSeconds;
-  
+
   // OCR is CPU-intensive
   if (/ocr/i.test(lower)) {
     baseSeconds = 10 + sizeMB * 0.5; // ~10s base + 0.5s per MB
@@ -557,7 +580,9 @@ export default function App() {
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100 for upload phase
   const [isUploading, setIsUploading] = useState(false); // true during upload, false during processing
   const [processingMessage, setProcessingMessage] = useState("");
+  const [elapsedTime, setElapsedTime] = useState(0); // seconds elapsed during processing
   const currentJobIdRef = useRef(null);
+  const processingStartRef = useRef(null); // timestamp when processing started
 
   const statusPhrases = useMemo(
     () => [
@@ -597,7 +622,7 @@ export default function App() {
     if (!pending) return;
 
     setRecoveredJob(pending);
-    
+
     // Show recovery message
     setMessages((prev) => [
       ...prev,
@@ -613,42 +638,33 @@ export default function App() {
     resumePendingJob(pending);
   }, []);
 
-  // Listen for service worker messages (background upload completion)
+  // Elapsed time tracker during processing
   useEffect(() => {
-    const handleSWMessage = (message) => {
-      console.log('[App] Service worker message:', message);
-      
-      if (message.type === 'UPLOAD_COMPLETE') {
-        // Background upload completed - start polling for result
-        const { jobId, uploadId } = message;
-        console.log('[App] Background upload completed, job:', jobId);
-        
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: makeId(),
-            role: "agent",
-            tone: "neutral",
-            text: "✓ Upload completed in background! Processing your file...",
-          },
-        ]);
-        
-        // Resume polling for this job
-        resumePendingJob({ jobId, prompt: '', fileName: 'background upload', estTime: '~30s' });
-      } else if (message.type === 'UPLOAD_FAILED') {
-        console.log('[App] Background upload failed:', message.error);
-        setError(`Background upload failed: ${message.error}`);
-        setLoading(false);
+    if (!loading || isUploading) {
+      setElapsedTime(0);
+      processingStartRef.current = null;
+      return;
+    }
+    
+    // Start tracking when processing begins (not uploading)
+    if (!processingStartRef.current) {
+      processingStartRef.current = Date.now();
+    }
+    
+    const interval = setInterval(() => {
+      if (processingStartRef.current) {
+        const elapsed = Math.floor((Date.now() - processingStartRef.current) / 1000);
+        setElapsedTime(elapsed);
       }
-    };
-
-    onServiceWorkerMessage(handleSWMessage);
-  }, []);
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [loading, isUploading]);
 
   // Resume polling for a recovered job
   const resumePendingJob = async (pending) => {
     const { jobId, prompt, fileName, estTime } = pending;
-    
+
     setLoading(true);
     setIsUploading(false);
     setEstimatedTime(estTime || "~30s");
@@ -658,7 +674,12 @@ export default function App() {
 
     setMessages((prev) => [
       ...prev,
-      { id: makeId(), role: "agent", tone: "status", text: `Resuming: ${prompt || fileName}...` },
+      {
+        id: makeId(),
+        role: "agent",
+        tone: "status",
+        text: `Resuming: ${prompt || fileName}...`,
+      },
     ]);
 
     try {
@@ -713,12 +734,17 @@ export default function App() {
               id: makeId(),
               role: "agent",
               tone: "status",
-              text: `${statusData.message || "Processing..."} (Est: ${estTime})`,
+              text: `${
+                statusData.message || "Processing..."
+              } (Est: ${estTime})`,
             },
           ];
         });
 
-        if (statusData.status === "completed" || statusData.status === "failed") {
+        if (
+          statusData.status === "completed" ||
+          statusData.status === "failed"
+        ) {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob();
@@ -780,7 +806,10 @@ export default function App() {
         setError(msg);
         setMessages((prev) => {
           const trimmed = prev.filter((m) => m.tone !== "status");
-          return [...trimmed, { id: makeId(), role: "agent", tone: "error", text: msg }];
+          return [
+            ...trimmed,
+            { id: makeId(), role: "agent", tone: "error", text: msg },
+          ];
         });
       }
     } finally {
@@ -871,7 +900,8 @@ export default function App() {
     const handleBeforeUnload = (e) => {
       if (loading) {
         e.preventDefault();
-        e.returnValue = "Processing is in progress. Are you sure you want to leave?";
+        e.returnValue =
+          "Processing is in progress. Are you sure you want to leave?";
         return e.returnValue;
       }
     };
@@ -885,19 +915,37 @@ export default function App() {
     };
   }, [loading]);
 
+  // Reference to track if we should auto-submit after file selection
+  const pendingAutoSubmitRef = useRef(null);
+  
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files || []);
     setFiles(selected);
     setLastFileName(selected.length ? selected[selected.length - 1].name : "");
-    
+
     // Show warning immediately when large files are selected
     if (selected.length > 0) {
       const totalSizeMB = getTotalFileSizeMB(selected);
       if (totalSizeMB > 60) {
         showToast(
-          `⚠️ Large file (${Math.round(totalSizeMB)}MB) detected. Processing may take several minutes.`,
+          `⚠️ Large file (${Math.round(
+            totalSizeMB
+          )}MB) detected. Processing may take several minutes.`,
           6000
         );
+      }
+      
+      // If there's already a prompt entered, auto-submit after a brief delay
+      // This allows "instant upload" behavior
+      if (prompt.trim()) {
+        pendingAutoSubmitRef.current = prompt.trim();
+        // Small delay to let state update
+        setTimeout(() => {
+          if (pendingAutoSubmitRef.current && selected.length > 0) {
+            submit(pendingAutoSubmitRef.current);
+            pendingAutoSubmitRef.current = null;
+          }
+        }, 100);
       }
     }
   };
@@ -918,18 +966,20 @@ export default function App() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    
+
     // Try to cancel the job on the server
     if (currentJobIdRef.current) {
       try {
-        await fetch(`/job/${currentJobIdRef.current}/cancel`, { method: "POST" });
+        await fetch(`/job/${currentJobIdRef.current}/cancel`, {
+          method: "POST",
+        });
       } catch (e) {
         // Ignore cancel errors
       }
       currentJobIdRef.current = null;
     }
     clearPendingJob(); // Clear localStorage when stopped
-    
+
     setLoading(false);
     setEstimatedTime("");
     setUploadProgress(0);
@@ -941,7 +991,12 @@ export default function App() {
         if (idx !== prev.length - 1) return true;
         return !(m.role === "agent" && m.tone === "status");
       }),
-      { id: makeId(), role: "agent", tone: "neutral", text: "Process cancelled. Ready for your next request." },
+      {
+        id: makeId(),
+        role: "agent",
+        tone: "neutral",
+        text: "Process cancelled. Ready for your next request.",
+      },
     ]);
   };
 
@@ -1015,8 +1070,8 @@ export default function App() {
     setPrompt("");
 
     // Show mobile-friendly upload message
-    const uploadMessage = isMobileDevice() 
-      ? "Uploading files... (Keep app open for best results)" 
+    const uploadMessage = isMobileDevice()
+      ? "Uploading files... (Keep app open for best results)"
       : "Uploading files...";
 
     setMessages((prev) => [
@@ -1043,21 +1098,19 @@ export default function App() {
       abortControllerRef.current = new AbortController();
 
       // Request Wake Lock to prevent device sleep during upload (mobile support)
-      if (isMobileDevice()) {
-        try {
-          wakeLockRef.current = await requestWakeLock();
-          if (wakeLockRef.current) {
-            console.log('[Upload] Wake Lock acquired - device will stay active during upload');
-          }
-        } catch (e) {
-          console.warn('[Upload] Wake Lock not available:', e);
-        }
+      try {
+        wakeLockRef.current = await requestWakeLock();
+      } catch (e) {
+        // Wake lock not critical
       }
 
       // Step 1: Upload with progress tracking using XMLHttpRequest
       const uploadResult = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         
+        // Set timeout for upload (10 minutes for large files)
+        xhr.timeout = 600000;
+
         xhr.upload.addEventListener("progress", (e) => {
           if (e.lengthComputable) {
             const percent = Math.round((e.loaded / e.total) * 100);
@@ -1070,7 +1123,12 @@ export default function App() {
               });
               return [
                 ...trimmed,
-                { id: makeId(), role: "agent", tone: "status", text: `Uploading... ${percent}%` },
+                {
+                  id: makeId(),
+                  role: "agent",
+                  tone: "status",
+                  text: `Uploading... ${percent}%`,
+                },
               ];
             });
           }
@@ -1081,15 +1139,27 @@ export default function App() {
             try {
               resolve(JSON.parse(xhr.responseText));
             } catch (e) {
-              reject(new Error("Invalid response from server"));
+              reject(new Error("Invalid response from server. Please try again."));
             }
+          } else if (xhr.status === 0) {
+            // Status 0 usually means network error or CORS issue
+            reject(new Error("Connection lost. Please check your internet and try again."));
           } else {
-            reject(new Error(`Upload failed: ${xhr.status}`));
+            reject(new Error(`Server error (${xhr.status}). Please try again.`));
           }
         });
 
-        xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-        xhr.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")));
+        xhr.addEventListener("error", () => {
+          reject(new Error("Connection failed. Please check your internet and try again."));
+        });
+        
+        xhr.addEventListener("timeout", () => {
+          reject(new Error("Upload timed out. Please try with a smaller file or better connection."));
+        });
+        
+        xhr.addEventListener("abort", () =>
+          reject(new DOMException("Cancelled", "AbortError"))
+        );
 
         xhr.open("POST", "/submit");
         xhr.send(formData);
@@ -1104,22 +1174,16 @@ export default function App() {
       // Save job to localStorage for recovery
       savePendingJob(jobId, userText, files[0]?.name || "file", estTime);
 
-      // Upload complete - release wake lock (no longer needed for processing)
-      if (wakeLockRef.current) {
-        try {
-          await releaseWakeLock();
-          wakeLockRef.current = null;
-          console.log('[Upload] Wake Lock released - upload complete');
-        } catch (e) {
-          console.warn('[Upload] Failed to release Wake Lock:', e);
-        }
-      }
+      // Upload complete - release wake lock
+      await releaseWakeLock(wakeLockRef.current);
+      wakeLockRef.current = null;
 
       // Upload complete - switch to processing phase
       setIsUploading(false);
       setUploadProgress(100);
       setEstimatedTime(estTime);
       setProcessingMessage("Processing started...");
+      processingStartRef.current = Date.now(); // Start timing
 
       // Update status message for processing
       setMessages((prev) => {
@@ -1129,7 +1193,12 @@ export default function App() {
         });
         return [
           ...trimmed,
-          { id: makeId(), role: "agent", tone: "status", text: `Processing... (Est: ${estTime})` },
+          {
+            id: makeId(),
+            role: "agent",
+            tone: "status",
+            text: `Processing... (0s / Est: ${estTime})`,
+          },
         ];
       });
 
@@ -1156,11 +1225,19 @@ export default function App() {
         }
 
         const statusData = await statusRes.json();
-        
+
         // Update processing message
         setProcessingMessage(statusData.message || "Processing...");
 
-        // Update the status bubble
+        // Calculate elapsed time for display
+        const currentElapsed = processingStartRef.current 
+          ? Math.floor((Date.now() - processingStartRef.current) / 1000)
+          : 0;
+        const elapsedStr = currentElapsed < 60 
+          ? `${currentElapsed}s` 
+          : `${Math.floor(currentElapsed / 60)}m ${currentElapsed % 60}s`;
+
+        // Update the status bubble with elapsed time
         setMessages((prev) => {
           const trimmed = prev.filter((m, idx) => {
             if (idx !== prev.length - 1) return true;
@@ -1168,20 +1245,25 @@ export default function App() {
           });
           return [
             ...trimmed,
-            { 
-              id: makeId(), 
-              role: "agent", 
-              tone: "status", 
-              text: `${statusData.message || "Processing..."} (Est: ${estTime})` 
+            {
+              id: makeId(),
+              role: "agent",
+              tone: "status",
+              text: `${
+                statusData.message || "Processing..."
+              } (${elapsedStr} / Est: ${estTime})`,
             },
           ];
         });
 
-        if (statusData.status === "completed" || statusData.status === "failed") {
+        if (
+          statusData.status === "completed" ||
+          statusData.status === "failed"
+        ) {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on completion
-          
+
           // Remove the status bubble
           setMessages((prev) => {
             const trimmed = prev.filter((m, idx) => {
@@ -1220,10 +1302,13 @@ export default function App() {
             // Handle error or clarification
             const msg = resultData?.message || "Unknown error";
             const hasOptions = isNonEmptyArray(resultData?.options);
-            
+
             if (hasOptions || looksLikeClarification(msg)) {
               setClarification(msg);
-              setPendingClarification({ question: msg, baseInstruction: userText });
+              setPendingClarification({
+                question: msg,
+                baseInstruction: userText,
+              });
               setPrompt("");
               setMessages((prev) => [
                 ...prev,
@@ -1253,21 +1338,24 @@ export default function App() {
       }
 
       if (!completed) {
-        throw new Error("Processing timed out. Please try again with a smaller file.");
+        throw new Error(
+          "Processing timed out. Please try again with a smaller file."
+        );
       }
-
     } catch (err) {
       currentJobIdRef.current = null;
       setEstimatedTime("");
       setUploadProgress(0);
       setIsUploading(false);
       setProcessingMessage("");
-      
+      setElapsedTime(0);
+      processingStartRef.current = null;
+
       const msg =
         err?.name === "AbortError"
           ? "Request cancelled."
           : `Failed: ${err?.message || err}`;
-      
+
       if (err?.name !== "AbortError") {
         setError(msg);
         setMessages((prev) => {
@@ -1284,16 +1372,11 @@ export default function App() {
     } finally {
       setLoading(false);
       abortControllerRef.current = null;
-      
+
       // Release wake lock if still held (error case)
-      if (wakeLockRef.current) {
-        try {
-          await releaseWakeLock();
-          wakeLockRef.current = null;
-        } catch (e) {
-          console.warn('[Upload] Failed to release Wake Lock in finally:', e);
-        }
-      }
+      await releaseWakeLock(wakeLockRef.current);
+      wakeLockRef.current = null;
+      processingStartRef.current = null;
     }
   };
 
@@ -1474,15 +1557,22 @@ export default function App() {
                           <span className="text-cyan-400">{Icons.cog}</span>
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">
-                              {isUploading 
-                                ? `Uploading... ${uploadProgress}%` 
-                                : (processingMessage || "Processing your request...")}
+                              {isUploading
+                                ? `Uploading... ${uploadProgress}%`
+                                : processingMessage ||
+                                  "Processing your request..."}
                             </span>
-                            {/* Show estimated time only during processing (not upload) */}
+                            {/* Show elapsed/estimated time during processing (not upload) */}
                             {!isUploading && estimatedTime && (
                               <span className="text-xs text-cyan-300/80 flex items-center gap-1">
                                 {Icons.clock}
-                                Estimated wait: {estimatedTime}
+                                {elapsedTime > 0 ? (
+                                  <>
+                                    {elapsedTime < 60 ? `${elapsedTime}s` : `${Math.floor(elapsedTime / 60)}m ${elapsedTime % 60}s`} / Est: {estimatedTime}
+                                  </>
+                                ) : (
+                                  <>Est: {estimatedTime}</>
+                                )}
                               </span>
                             )}
                           </div>
@@ -1491,7 +1581,7 @@ export default function App() {
                         {isUploading && (
                           <>
                             <div className="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden">
-                              <div 
+                              <div
                                 className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full transition-all duration-300 ease-out"
                                 style={{ width: `${uploadProgress}%` }}
                               />
@@ -1870,7 +1960,7 @@ export default function App() {
                           {uploadProgress}%
                         </div>
                         <div className="w-full bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-cyan-400 rounded-full transition-all duration-300"
                             style={{ width: `${uploadProgress}%` }}
                           />
