@@ -480,6 +480,7 @@ export default function App() {
 
   const sessionIdRef = useRef(getOrCreateSessionId());
   const abortControllerRef = useRef(null);
+  const wakeLockRef = useRef(null);
 
   const [toast, setToast] = useState(null);
   const [downloadBlink, setDownloadBlink] = useState(false);
@@ -549,6 +550,69 @@ export default function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading, result, error, clarification]);
+
+  // Wake Lock: Keep screen awake during processing (mobile)
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if (loading && "wakeLock" in navigator) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+        } catch (err) {
+          // Wake lock request failed - not critical
+          console.log("Wake lock not available:", err);
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        } catch (err) {
+          // Ignore release errors
+        }
+      }
+    };
+
+    if (loading) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    return () => {
+      releaseWakeLock();
+    };
+  }, [loading]);
+
+  // Warn user if they try to leave/switch tabs during processing
+  useEffect(() => {
+    if (!loading) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && loading) {
+        // Can't show toast when hidden, but we can set a flag
+        // Toast will show when they return
+      }
+    };
+
+    const handleBeforeUnload = (e) => {
+      if (loading) {
+        e.preventDefault();
+        e.returnValue = "Processing is in progress. Are you sure you want to leave?";
+        return e.returnValue;
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [loading]);
 
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files || []);
