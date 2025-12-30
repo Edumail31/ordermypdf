@@ -55,20 +55,20 @@ function getTotalFileSizeMB(files) {
 function estimateWaitTime(sizeMB, prompt) {
   const lower = (prompt || "").toLowerCase();
   let baseSeconds = sizeMB * 0.8; // ~0.8s per MB baseline
-  
+
   // Compression takes longer
   if (/compress/i.test(lower)) baseSeconds = sizeMB * 1.5;
   // OCR is slowest
   if (/ocr/i.test(lower)) baseSeconds = sizeMB * 3;
   // PDF to DOCX conversion
   if (/docx|word/i.test(lower)) baseSeconds = sizeMB * 2;
-  
+
   // Minimum 5 seconds, cap at 10 minutes display
   const seconds = Math.max(5, Math.min(600, Math.round(baseSeconds)));
-  
+
   if (seconds < 60) return `~${seconds}s`;
   const mins = Math.round(seconds / 60);
-  return `~${mins} min${mins > 1 ? 's' : ''}`;
+  return `~${mins} min${mins > 1 ? "s" : ""}`;
 }
 
 // Check if prompt has specific compression target
@@ -424,7 +424,12 @@ export default function App() {
     // Show warning for large files (>60MB)
     const totalSizeMB = getTotalFileSizeMB(files);
     if (totalSizeMB > 60) {
-      showToast(`⏳ Large file (${Math.round(totalSizeMB)}MB) — processing may take several minutes. Please wait...`, 6000);
+      showToast(
+        `⏳ Large file (${Math.round(
+          totalSizeMB
+        )}MB) — processing may take several minutes. Please wait...`,
+        6000
+      );
     }
 
     // Calculate and set estimated time
@@ -612,6 +617,23 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       <div className="cursor-glow" aria-hidden="true" />
+      
+      {/* Toast notification for large files */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl border shadow-lg backdrop-blur-xl max-w-[90vw]",
+            "border-amber-400/30 bg-amber-400/15 text-amber-100",
+            toast.exiting ? "toast-exit" : "toast-enter"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <i className="fa-solid fa-clock text-amber-300" />
+            <span className="text-sm font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="pointer-events-none fixed inset-0 opacity-70">
         <div className="absolute -top-24 left-1/2 h-64 w-[42rem] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="absolute bottom-[-6rem] right-[-6rem] h-72 w-72 rounded-full bg-teal-500/10 blur-3xl" />
@@ -620,7 +642,8 @@ export default function App() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-5 px-4 py-7">
         <header className="flex flex-col gap-2">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
+            <h1 className="text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
+              <i className="fa-solid fa-file-pdf text-cyan-400/90" />
               <span className="relative">
                 <span className="absolute -inset-2 -z-10 rounded-2xl bg-cyan-400/10 blur-xl" />
                 <span className="bg-gradient-to-r from-cyan-200 via-cyan-100 to-teal-200 bg-clip-text text-transparent drop-shadow-[0_0_16px_rgba(34,211,238,0.35)]">
@@ -629,6 +652,7 @@ export default function App() {
               </span>
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-slate-300">
+              <i className="fa-solid fa-bolt text-amber-400/80 mr-1" />
               Upload PDFs, describe what you want — merge, split, delete pages,
               compress, or convert to DOCX.
             </p>
@@ -636,29 +660,42 @@ export default function App() {
         </header>
 
         <main className="grid gap-6 md:grid-cols-[1fr_18rem]">
-          <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_14px_80px_rgba(0,0,0,0.45)] transition-shadow duration-300 hover:shadow-[0_18px_100px_rgba(0,0,0,0.55)]">
+          <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_14px_80px_rgba(0,0,0,0.45)] transition-shadow duration-300 hover:shadow-[0_18px_100px_rgba(0,0,0,0.55)] mx-auto w-full max-w-2xl md:max-w-none md:mx-0">
             <div className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
               <div className="space-y-1">
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-white flex items-center gap-2">
+                  <i className="fa-solid fa-robot text-cyan-400" />
                   Agent Console
                 </div>
                 <div className="text-xs text-slate-400">
+                  <i className="fa-solid fa-shield-halved text-slate-500 mr-1" />
                   Your files never leave this session except for processing.
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300">
+                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300 flex items-center gap-1.5">
+                  <i className="fa-regular fa-copy text-slate-400" />
                   {fileBadge}
                 </span>
                 <span
                   className={cn(
-                    "rounded-full border px-3 py-1 text-[11px]",
+                    "rounded-full border px-3 py-1 text-[11px] flex items-center gap-1.5",
                     loading
                       ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                       : "border-white/10 bg-black/20 text-slate-300"
                   )}
                 >
-                  {loading ? "Working…" : "Ready"}
+                  {loading ? (
+                    <>
+                      <i className="fa-solid fa-circle-notch fa-spin text-cyan-300" />
+                      Working…
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-circle text-xs text-green-400" />
+                      Ready
+                    </>
+                  )}
                 </span>
               </div>
             </div>
@@ -692,13 +729,8 @@ export default function App() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="whitespace-pre-wrap">{m.text}</div>
                           {m.role === "agent" && m.tone === "status" ? (
-                            <div className="mt-1 inline-flex items-center gap-1 text-slate-300">
-                              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/80" />
-                              <span className="typing-dots" aria-hidden="true">
-                                <span>.</span>
-                                <span>.</span>
-                                <span>.</span>
-                              </span>
+                            <div className="mt-0.5 inline-flex items-center gap-1.5 text-cyan-300">
+                              <i className="fa-solid fa-spinner fa-spin text-xs" />
                             </div>
                           ) : null}
                         </div>
@@ -713,9 +745,10 @@ export default function App() {
                                 className={cn(
                                   "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
                                   "border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20",
-                                  "active:scale-95"
+                                  "active:scale-95 flex items-center gap-1.5"
                                 )}
                               >
+                                <i className="fa-solid fa-arrow-right text-[10px] text-amber-300/80" />
                                 {opt}
                               </button>
                             ))}
@@ -728,15 +761,18 @@ export default function App() {
 
                 {loading ? (
                   <div className="flex w-full justify-start animate-fade-slide">
-                    <div className="max-w-[92%] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                        <span>{statusPhrases[statusIndex]}</span>
-                        <span className="typing-dots" aria-hidden="true">
-                          <span>.</span>
-                          <span>.</span>
-                          <span>.</span>
-                        </span>
+                    <div className="max-w-[92%] rounded-2xl border border-cyan-400/15 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                      <div className="flex items-center gap-3">
+                        <i className="fa-solid fa-cog fa-spin text-cyan-400" />
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">Processing your request...</span>
+                          {estimatedTime && (
+                            <span className="text-xs text-cyan-300/80">
+                              <i className="fa-regular fa-clock mr-1" />
+                              Estimated wait: {estimatedTime}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -767,20 +803,19 @@ export default function App() {
                         "shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
                       )}
                     >
+                      <i className="fa-solid fa-folder-open text-cyan-300/90" />
                       <span className="text-cyan-300/90">Choose files</span>
-                      <span className="text-slate-400 group-hover:text-slate-300">
-                        +
-                      </span>
                     </button>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300">
+                          <i className="fa-regular fa-file-pdf text-slate-400" />
                           {hasMultiple ? "Multiple files" : "File"}
                         </span>
                         {files.length ? (
                           <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] text-cyan-100 animate-chip-in">
-                            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                            <i className="fa-solid fa-check-circle text-cyan-300 text-xs" />
                             <span className="truncate max-w-[14rem]">
                               {lastFileName || files[0]?.name}
                             </span>
@@ -806,7 +841,7 @@ export default function App() {
                       type="submit"
                       disabled={loading}
                       className={cn(
-                        "relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                        "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
                         "border border-cyan-400/20 bg-cyan-400/10 text-cyan-50",
                         "hover:bg-cyan-400/15",
                         "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
@@ -815,11 +850,14 @@ export default function App() {
                     >
                       {loading ? (
                         <span className="inline-flex items-center gap-2">
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/70 border-t-transparent" />
+                          <i className="fa-solid fa-spinner fa-spin" />
                           Processing
                         </span>
                       ) : (
-                        "Run"
+                        <>
+                          <i className="fa-solid fa-play" />
+                          Run
+                        </>
                       )}
                       {loading ? (
                         <span
@@ -833,9 +871,13 @@ export default function App() {
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl shadow-[0_12px_60px_rgba(0,0,0,0.30)]">
                         <div className="mb-2 flex items-center justify-between">
                           <div className="text-[11px] font-medium text-slate-200">
+                            <i className="fa-solid fa-lightbulb text-amber-300/80 mr-1" />
                             Prompt ideas
                           </div>
-                          <div className="text-[10px] text-slate-400">tap</div>
+                          <div className="text-[10px] text-slate-400">
+                            <i className="fa-solid fa-hand-pointer text-slate-500 mr-1" />
+                            tap
+                          </div>
                         </div>
 
                         <div className="relative h-28 overflow-hidden rounded-xl border border-white/10 bg-black/10">
@@ -884,8 +926,8 @@ export default function App() {
                     )}
                   >
                     <div className="flex items-start gap-3 p-3">
-                      <div className="mt-1 h-8 w-8 shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-center text-sm text-slate-200">
-                        ✨
+                      <div className="mt-1 h-8 w-8 shrink-0 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-cyan-300/80">
+                        <i className="fa-solid fa-wand-magic-sparkles" />
                       </div>
                       <div className="flex-1">
                         <textarea
@@ -933,7 +975,7 @@ export default function App() {
                     type="submit"
                     disabled={loading}
                     className={cn(
-                      "flex-1 relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
                       "border border-cyan-400/20 bg-cyan-400/10 text-cyan-50",
                       "hover:bg-cyan-400/15",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
@@ -942,11 +984,14 @@ export default function App() {
                   >
                     {loading ? (
                       <span className="inline-flex items-center gap-2">
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/70 border-t-transparent" />
+                        <i className="fa-solid fa-spinner fa-spin" />
                         Processing
                       </span>
                     ) : (
-                      "Run"
+                      <>
+                        <i className="fa-solid fa-play" />
+                        Run
+                      </>
                     )}
                   </button>
 
@@ -958,18 +1003,21 @@ export default function App() {
                     }
                     download
                     className={cn(
-                      "flex-1 relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
                       "border",
                       !result?.output_file
                         ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
                         : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15",
-                      downloadBlink && result?.output_file && "animate-download-blink"
+                      downloadBlink &&
+                        result?.output_file &&
+                        "animate-download-blink"
                     )}
                   >
+                    <i className="fa-solid fa-download" />
                     {result?.output_file
                       ? "Download"
                       : loading
-                      ? "Preparing…"
+                      ? "Preparing"
                       : "Download"}
                   </a>
                 </div>
@@ -978,17 +1026,25 @@ export default function App() {
                 <div className="hidden md:flex flex-row gap-3 items-center justify-between">
                   <div className="text-xs text-slate-400">
                     {error ? (
-                      <span className="text-rose-200">{error}</span>
+                      <span className="text-rose-200">
+                        <i className="fa-solid fa-circle-exclamation mr-1" />
+                        {error}
+                      </span>
                     ) : clarification ? (
                       <span className="text-amber-200">
+                        <i className="fa-solid fa-circle-question mr-1" />
                         Agent needs one more detail.
                       </span>
                     ) : result ? (
                       <span className="text-teal-200">
+                        <i className="fa-solid fa-circle-check mr-1" />
                         Output ready for download.
                       </span>
                     ) : (
-                      <span>Upload PDFs, then send your instruction.</span>
+                      <span>
+                        <i className="fa-solid fa-upload mr-1 text-slate-500" />
+                        Upload PDFs, then send your instruction.
+                      </span>
                     )}
                   </div>
 
@@ -1000,18 +1056,21 @@ export default function App() {
                     }
                     download
                     className={cn(
-                      "relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
                       "border",
                       !result?.output_file
                         ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
                         : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15 shadow-[0_0_0_1px_rgba(45,212,191,0.12)]",
-                      downloadBlink && result?.output_file && "animate-download-blink"
+                      downloadBlink &&
+                        result?.output_file &&
+                        "animate-download-blink"
                     )}
                   >
+                    <i className="fa-solid fa-download" />
                     {result?.output_file
                       ? downloadLabel
                       : loading
-                      ? "Preparing…"
+                      ? "Preparing"
                       : "Download"}
                     {loading ? (
                       <span
@@ -1027,30 +1086,60 @@ export default function App() {
 
           <aside className="hidden md:block">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl shadow-[0_12px_60px_rgba(0,0,0,0.35)]">
-              <div className="mb-2 text-xs font-medium text-slate-200">
+              <div className="mb-2 text-xs font-medium text-slate-200 flex items-center gap-2">
+                <i className="fa-solid fa-clipboard-list text-cyan-400/80" />
                 Session
               </div>
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400">Selected</div>
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <i className="fa-regular fa-file text-slate-500" />
+                    Selected
+                  </div>
                   <div className="truncate">
                     {files.length ? lastFileName || files[0]?.name : "—"}
                   </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400">Status</div>
-                  <div>
-                    {loading ? "Processing" : result ? "Ready" : "Idle"}
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <i className="fa-solid fa-signal text-slate-500" />
+                    Status
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {loading ? (
+                      <>
+                        <i className="fa-solid fa-spinner fa-spin text-cyan-400 text-xs" />
+                        Processing
+                      </>
+                    ) : result ? (
+                      <>
+                        <i className="fa-solid fa-check text-teal-400 text-xs" />
+                        Ready
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-minus text-slate-500 text-xs" />
+                        Idle
+                      </>
+                    )}
                   </div>
                 </div>
                 {loading && estimatedTime && (
                   <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2">
-                    <div className="text-[11px] text-cyan-300">Est. Wait</div>
-                    <div className="text-cyan-100 font-medium">{estimatedTime}</div>
+                    <div className="text-[11px] text-cyan-300 flex items-center gap-1">
+                      <i className="fa-regular fa-clock" />
+                      Est. Wait
+                    </div>
+                    <div className="text-cyan-100 font-medium">
+                      {estimatedTime}
+                    </div>
                   </div>
                 )}
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400">Output</div>
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <i className="fa-solid fa-file-export text-slate-500" />
+                    Output
+                  </div>
                   <div className="truncate">{result?.output_file || "—"}</div>
                 </div>
               </div>
