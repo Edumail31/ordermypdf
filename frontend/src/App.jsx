@@ -45,6 +45,53 @@ function inferDownloadLabel(result) {
   }
 }
 
+// Calculate total file size in MB
+function getTotalFileSizeMB(files) {
+  if (!files || files.length === 0) return 0;
+  return files.reduce((sum, f) => sum + (f.size || 0), 0) / (1024 * 1024);
+}
+
+// Estimate wait time based on file size and operation
+function estimateWaitTime(sizeMB, prompt) {
+  const lower = (prompt || "").toLowerCase();
+  let baseSeconds = sizeMB * 0.8; // ~0.8s per MB baseline
+  
+  // Compression takes longer
+  if (/compress/i.test(lower)) baseSeconds = sizeMB * 1.5;
+  // OCR is slowest
+  if (/ocr/i.test(lower)) baseSeconds = sizeMB * 3;
+  // PDF to DOCX conversion
+  if (/docx|word/i.test(lower)) baseSeconds = sizeMB * 2;
+  
+  // Minimum 5 seconds, cap at 10 minutes display
+  const seconds = Math.max(5, Math.min(600, Math.round(baseSeconds)));
+  
+  if (seconds < 60) return `~${seconds}s`;
+  const mins = Math.round(seconds / 60);
+  return `~${mins} min${mins > 1 ? 's' : ''}`;
+}
+
+// Check if prompt has specific compression target
+function hasSpecificCompressionTarget(prompt) {
+  const lower = (prompt || "").toLowerCase();
+  // Specific MB target: "compress to 5mb", "2mb"
+  if (/\d+\s*mb/i.test(lower)) return true;
+  // Percentage: "by 50%", "compress 30%"
+  if (/\d+\s*%/.test(lower)) return true;
+  // Fractions: "by half", "quarter", "third"
+  if (/\b(half|quarter|third)\b/i.test(lower)) return true;
+  // Qualitative with specific intent: "very tiny", "smallest", "maximum"
+  if (/\b(very tiny|smallest|maximum|minimal)\b/i.test(lower)) return true;
+  return false;
+}
+
+// Check if this is a plain compress command without target
+function isPlainCompress(prompt) {
+  const lower = (prompt || "").toLowerCase().trim();
+  // Matches: "compress", "compress it", "compress this", "compress pdf", "compress this pdf"
+  return /^compress(\s+(it|this|pdf|this pdf|the pdf))?$/i.test(lower);
+}
+
 function looksLikeClarification(msg) {
   if (!msg) return false;
   const s = String(msg).trim();
@@ -283,6 +330,10 @@ export default function App() {
 
   const sessionIdRef = useRef(getOrCreateSessionId());
 
+  const [toast, setToast] = useState(null);
+  const [downloadBlink, setDownloadBlink] = useState(false);
+  const [estimatedTime, setEstimatedTime] = useState("");
+
   const statusPhrases = useMemo(
     () => [
       "🤖 Analyzing your request…",
@@ -350,6 +401,15 @@ export default function App() {
     setLastFileName(selected.length ? selected[selected.length - 1].name : "");
   };
 
+  // Show toast notification
+  const showToast = (message, duration = 4000) => {
+    setToast({ message, exiting: false });
+    setTimeout(() => {
+      setToast((t) => (t ? { ...t, exiting: true } : null));
+      setTimeout(() => setToast(null), 300);
+    }, duration);
+  };
+
   const submit = async (overrideText) => {
     if (!files.length) {
       setError("Please upload at least one file.");
@@ -361,10 +421,21 @@ export default function App() {
       return;
     }
 
+    // Show warning for large files (>60MB)
+    const totalSizeMB = getTotalFileSizeMB(files);
+    if (totalSizeMB > 60) {
+      showToast(`⏳ Large file (${Math.round(totalSizeMB)}MB) — processing may take several minutes. Please wait...`, 6000);
+    }
+
+    // Calculate and set estimated time
+    const estTime = estimateWaitTime(totalSizeMB, rawInput);
+    setEstimatedTime(estTime);
+
     setLoading(true);
     setError("");
     setResult(null);
     setClarification("");
+    setDownloadBlink(false);
 
     const rawUserText = rawInput;
 
@@ -387,7 +458,15 @@ export default function App() {
         })
       : applyHumanDefaults(rawUserText);
 
-    const userText = normalizePromptForSend(composed);
+    // Auto-apply 25% compression target for plain "compress" commands
+    let finalComposed = composed;
+    if (isPlainCompress(composed) && !hasSpecificCompressionTarget(composed)) {
+      const totalSizeMB = getTotalFileSizeMB(files);
+      const targetMB = Math.max(1, Math.round(totalSizeMB * 0.25));
+      finalComposed = `compress to ${targetMB}mb`;
+    }
+
+    const userText = normalizePromptForSend(finalComposed);
 
     // Chat-style: clear input immediately after send
     setPrompt("");
@@ -446,6 +525,10 @@ export default function App() {
         setResult(data);
         setPendingClarification(null);
         setClarification("");
+        setEstimatedTime("");
+        // Trigger download button blink
+        setDownloadBlink(true);
+        setTimeout(() => setDownloadBlink(false), 1600);
         setMessages((prev) => [
           ...prev,
           {
@@ -485,6 +568,7 @@ export default function App() {
         }
       }
     } catch (err) {
+      setEstimatedTime("");
       const msg =
         err?.name === "AbortError"
           ? "Request timed out. Please try again."
@@ -717,7 +801,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-stretch gap-2 md:items-end">
+                  <div className="hidden md:flex flex-col items-stretch gap-2 md:items-end">
                     <button
                       type="submit"
                       disabled={loading}
@@ -843,7 +927,55 @@ export default function App() {
                   <div className="pointer-events-none absolute -inset-px rounded-2xl opacity-60 blur-sm" />
                 </div>
 
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                {/* Mobile buttons row - Run and Download side by side */}
+                <div className="flex md:hidden gap-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className={cn(
+                      "flex-1 relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "border border-cyan-400/20 bg-cyan-400/10 text-cyan-50",
+                      "hover:bg-cyan-400/15",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
+                      loading && "cursor-not-allowed opacity-80"
+                    )}
+                  >
+                    {loading ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/70 border-t-transparent" />
+                        Processing
+                      </span>
+                    ) : (
+                      "Run"
+                    )}
+                  </button>
+
+                  <a
+                    href={
+                      result?.output_file
+                        ? `/download/${result.output_file}`
+                        : "#"
+                    }
+                    download
+                    className={cn(
+                      "flex-1 relative inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "border",
+                      !result?.output_file
+                        ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
+                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15",
+                      downloadBlink && result?.output_file && "animate-download-blink"
+                    )}
+                  >
+                    {result?.output_file
+                      ? "Download"
+                      : loading
+                      ? "Preparing…"
+                      : "Download"}
+                  </a>
+                </div>
+
+                {/* Desktop status + download row */}
+                <div className="hidden md:flex flex-row gap-3 items-center justify-between">
                   <div className="text-xs text-slate-400">
                     {error ? (
                       <span className="text-rose-200">{error}</span>
@@ -872,7 +1004,8 @@ export default function App() {
                       "border",
                       !result?.output_file
                         ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
-                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15 shadow-[0_0_0_1px_rgba(45,212,191,0.12)]"
+                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15 shadow-[0_0_0_1px_rgba(45,212,191,0.12)]",
+                      downloadBlink && result?.output_file && "animate-download-blink"
                     )}
                   >
                     {result?.output_file
@@ -910,6 +1043,12 @@ export default function App() {
                     {loading ? "Processing" : result ? "Ready" : "Idle"}
                   </div>
                 </div>
+                {loading && estimatedTime && (
+                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2">
+                    <div className="text-[11px] text-cyan-300">Est. Wait</div>
+                    <div className="text-cyan-100 font-medium">{estimatedTime}</div>
+                  </div>
+                )}
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <div className="text-[11px] text-slate-400">Output</div>
                   <div className="truncate">{result?.output_file || "—"}</div>
