@@ -1,4 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  requestWakeLock,
+  releaseWakeLock,
+  onServiceWorkerMessage,
+  isMobileDevice,
+  getUploadCapabilities,
+} from "./backgroundUpload";
 
 function cn(...parts) {
   return parts.filter(Boolean).join(" ");
@@ -606,6 +613,38 @@ export default function App() {
     resumePendingJob(pending);
   }, []);
 
+  // Listen for service worker messages (background upload completion)
+  useEffect(() => {
+    const handleSWMessage = (message) => {
+      console.log('[App] Service worker message:', message);
+      
+      if (message.type === 'UPLOAD_COMPLETE') {
+        // Background upload completed - start polling for result
+        const { jobId, uploadId } = message;
+        console.log('[App] Background upload completed, job:', jobId);
+        
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: makeId(),
+            role: "agent",
+            tone: "neutral",
+            text: "✓ Upload completed in background! Processing your file...",
+          },
+        ]);
+        
+        // Resume polling for this job
+        resumePendingJob({ jobId, prompt: '', fileName: 'background upload', estTime: '~30s' });
+      } else if (message.type === 'UPLOAD_FAILED') {
+        console.log('[App] Background upload failed:', message.error);
+        setError(`Background upload failed: ${message.error}`);
+        setLoading(false);
+      }
+    };
+
+    onServiceWorkerMessage(handleSWMessage);
+  }, []);
+
   // Resume polling for a recovered job
   const resumePendingJob = async (pending) => {
     const { jobId, prompt, fileName, estTime } = pending;
@@ -975,6 +1014,11 @@ export default function App() {
     // Chat-style: clear input immediately after send
     setPrompt("");
 
+    // Show mobile-friendly upload message
+    const uploadMessage = isMobileDevice() 
+      ? "Uploading files... (Keep app open for best results)" 
+      : "Uploading files...";
+
     setMessages((prev) => [
       ...prev,
       {
@@ -983,7 +1027,7 @@ export default function App() {
         tone: "neutral",
         text: pendingClarification ? rawUserText : userText,
       },
-      { id: makeId(), role: "agent", tone: "status", text: "Uploading files..." },
+      { id: makeId(), role: "agent", tone: "status", text: uploadMessage },
     ]);
 
     const formData = new FormData();
@@ -997,6 +1041,18 @@ export default function App() {
     try {
       // Create abort controller for polling (upload uses XHR)
       abortControllerRef.current = new AbortController();
+
+      // Request Wake Lock to prevent device sleep during upload (mobile support)
+      if (isMobileDevice()) {
+        try {
+          wakeLockRef.current = await requestWakeLock();
+          if (wakeLockRef.current) {
+            console.log('[Upload] Wake Lock acquired - device will stay active during upload');
+          }
+        } catch (e) {
+          console.warn('[Upload] Wake Lock not available:', e);
+        }
+      }
 
       // Step 1: Upload with progress tracking using XMLHttpRequest
       const uploadResult = await new Promise((resolve, reject) => {
@@ -1047,6 +1103,17 @@ export default function App() {
 
       // Save job to localStorage for recovery
       savePendingJob(jobId, userText, files[0]?.name || "file", estTime);
+
+      // Upload complete - release wake lock (no longer needed for processing)
+      if (wakeLockRef.current) {
+        try {
+          await releaseWakeLock();
+          wakeLockRef.current = null;
+          console.log('[Upload] Wake Lock released - upload complete');
+        } catch (e) {
+          console.warn('[Upload] Failed to release Wake Lock:', e);
+        }
+      }
 
       // Upload complete - switch to processing phase
       setIsUploading(false);
@@ -1217,6 +1284,16 @@ export default function App() {
     } finally {
       setLoading(false);
       abortControllerRef.current = null;
+      
+      // Release wake lock if still held (error case)
+      if (wakeLockRef.current) {
+        try {
+          await releaseWakeLock();
+          wakeLockRef.current = null;
+        } catch (e) {
+          console.warn('[Upload] Failed to release Wake Lock in finally:', e);
+        }
+      }
     }
   };
 

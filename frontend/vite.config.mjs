@@ -14,6 +14,8 @@ export default defineConfig({
       },
     },
   },
+  // Copy public folder files (including sw.js) to build output
+  publicDir: "public",
   server: {
     port: 5173,
     proxy: {
@@ -22,6 +24,14 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/download": {
+        target: API_URL,
+        changeOrigin: true,
+      },
+      "/submit": {
+        target: API_URL,
+        changeOrigin: true,
+      },
+      "/job": {
         target: API_URL,
         changeOrigin: true,
       },
