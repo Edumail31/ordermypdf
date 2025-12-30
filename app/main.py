@@ -23,8 +23,6 @@ import re
 
 from app.config import settings
 from app.models import ProcessResponse, ParsedIntent
-from app.clarification_layer import clarify_intent
-from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDER, RE_ROTATE_DEGREES, RE_COMPRESS_SIZE
 from app.pdf_operations import (
     merge_pdfs,
     split_pdf,
@@ -45,6 +43,8 @@ from app.pdf_operations import (
     get_upload_path,
     get_output_path
 )
+from app.clarification_layer import clarify_intent
+from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDER, RE_ROTATE_DEGREES, RE_COMPRESS_SIZE
 
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

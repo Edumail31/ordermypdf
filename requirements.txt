@@ -39,3 +39,4 @@ tzlocal==5.3.1
 uvicorn==0.40.0
 watchfiles==1.1.1
 websockets==15.0.1
+ocrmypdf==16.4.1
