@@ -4,6 +4,35 @@ function cn(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
+// Lightweight inline SVG icons (no external dependencies)
+const Icons = {
+  pdf: <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM9 13h2v5H9v-5zm4 0h2v5h-2v-5z"/></svg>,
+  bolt: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>,
+  robot: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2zM7.5 13a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9 18h6v1H9v-1z"/></svg>,
+  shield: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>,
+  copy: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>,
+  spinner: <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>,
+  circle: <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>,
+  check: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>,
+  folder: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>,
+  file: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>,
+  play: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>,
+  download: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>,
+  clock: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>,
+  lightbulb: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/></svg>,
+  wand: <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7.5 5.6L10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7l2.5-1.4zm12 9.8L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14l-2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zM9.4 10.6L2 18l4 4 7.4-7.4-4-4zm-1.4 7L6.6 19 5 17.4l1.4-1.4 1.6 1.6z"/></svg>,
+  arrow: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>,
+  signal: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M2 22h2V12H2v10zm4 0h2V9H6v13zm4 0h2V6h-2v16zm4 0h2V2h-2v20zm4 0h2v-8h-2v8z"/></svg>,
+  export: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>,
+  clipboard: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 16H5V5h2v2h10V5h2v14z"/></svg>,
+  minus: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>,
+  error: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>,
+  question: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>,
+  checkCircle: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>,
+  upload: <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>,
+  cog: <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/></svg>,
+};
+
 function makeId() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -347,14 +376,18 @@ export default function App() {
 
   const promptSuggestions = useMemo(
     () => [
-      "Try: convert to DOCX",
-      "Try: compress to 2MB",
-      "Try: rotate page 1 by 90°",
-      "Try: add watermark CONFIDENTIAL",
-      "Try: add page numbers",
-      "Try: extract text",
-      "Try: export pages as PNG",
-      "Try: OCR this scan",
+      "compress to 5MB",
+      "merge all PDFs",
+      "delete pages 3-5",
+      "convert to Word",
+      "extract first 10 pages",
+      "rotate all pages 90°",
+      "OCR this scanned doc",
+      "add page numbers",
+      "export as PNG images",
+      "compress then split page 1",
+      "watermark DRAFT on all",
+      "JPG to PDF",
     ],
     []
   );
@@ -618,17 +651,17 @@ export default function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       <div className="cursor-glow" aria-hidden="true" />
       
-      {/* Toast notification for large files */}
+      {/* Toast notification for large files - centered on all devices */}
       {toast && (
         <div
           className={cn(
-            "fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl border shadow-lg backdrop-blur-xl max-w-[90vw]",
-            "border-amber-400/30 bg-amber-400/15 text-amber-100",
+            "fixed top-4 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-50 px-4 py-3 rounded-xl border shadow-lg bg-slate-900/95 max-w-sm mx-auto md:mx-0",
+            "border-amber-400/40 text-amber-100",
             toast.exiting ? "toast-exit" : "toast-enter"
           )}
         >
-          <div className="flex items-center gap-3">
-            <i className="fa-solid fa-clock text-amber-300" />
+          <div className="flex items-center gap-3 justify-center text-center">
+            <span className="text-amber-300 shrink-0">{Icons.clock}</span>
             <span className="text-sm font-medium">{toast.message}</span>
           </div>
         </div>
@@ -643,7 +676,7 @@ export default function App() {
         <header className="flex flex-col gap-2">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
-              <i className="fa-solid fa-file-pdf text-cyan-400/90" />
+              <span className="text-cyan-400/90">{Icons.pdf}</span>
               <span className="relative">
                 <span className="absolute -inset-2 -z-10 rounded-2xl bg-cyan-400/10 blur-xl" />
                 <span className="bg-gradient-to-r from-cyan-200 via-cyan-100 to-teal-200 bg-clip-text text-transparent drop-shadow-[0_0_16px_rgba(34,211,238,0.35)]">
@@ -652,29 +685,28 @@ export default function App() {
               </span>
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-slate-300">
-              <i className="fa-solid fa-bolt text-amber-400/80 mr-1" />
-              Upload PDFs, describe what you want — merge, split, delete pages,
-              compress, or convert to DOCX.
+              <span className="text-amber-400/80 mr-1 inline-block">{Icons.bolt}</span>
+              Merge, split, compress, OCR, convert (PDF ↔ DOCX/JPG/PNG) — just upload and describe.
             </p>
           </div>
         </header>
 
-        <main className="grid gap-6 md:grid-cols-[1fr_18rem]">
-          <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_14px_80px_rgba(0,0,0,0.45)] transition-shadow duration-300 hover:shadow-[0_18px_100px_rgba(0,0,0,0.55)] mx-auto w-full max-w-2xl md:max-w-none md:mx-0">
+        <main className="grid gap-6 md:grid-cols-[1fr_18rem] place-items-center md:place-items-start">
+          <section className="rounded-3xl border border-white/10 bg-white/5 shadow-[0_8px_40px_rgba(0,0,0,0.35)] w-full max-w-[95vw] md:max-w-none">
             <div className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
               <div className="space-y-1">
                 <div className="text-sm font-medium text-white flex items-center gap-2">
-                  <i className="fa-solid fa-robot text-cyan-400" />
+                  <span className="text-cyan-400">{Icons.robot}</span>
                   Agent Console
                 </div>
-                <div className="text-xs text-slate-400">
-                  <i className="fa-solid fa-shield-halved text-slate-500 mr-1" />
-                  Your files never leave this session except for processing.
+                <div className="text-xs text-slate-400 flex items-center gap-1">
+                  <span className="text-slate-500">{Icons.shield}</span>
+                  Files processed securely, never stored.
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300 flex items-center gap-1.5">
-                  <i className="fa-regular fa-copy text-slate-400" />
+                  <span className="text-slate-400">{Icons.copy}</span>
                   {fileBadge}
                 </span>
                 <span
@@ -687,12 +719,12 @@ export default function App() {
                 >
                   {loading ? (
                     <>
-                      <i className="fa-solid fa-circle-notch fa-spin text-cyan-300" />
+                      <span className="text-cyan-300">{Icons.spinner}</span>
                       Working…
                     </>
                   ) : (
                     <>
-                      <i className="fa-solid fa-circle text-xs text-green-400" />
+                      <span className="text-green-400">{Icons.circle}</span>
                       Ready
                     </>
                   )}
@@ -730,7 +762,7 @@ export default function App() {
                           <div className="whitespace-pre-wrap">{m.text}</div>
                           {m.role === "agent" && m.tone === "status" ? (
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-cyan-300">
-                              <i className="fa-solid fa-spinner fa-spin text-xs" />
+                              {Icons.spinner}
                             </div>
                           ) : null}
                         </div>
@@ -748,7 +780,7 @@ export default function App() {
                                   "active:scale-95 flex items-center gap-1.5"
                                 )}
                               >
-                                <i className="fa-solid fa-arrow-right text-[10px] text-amber-300/80" />
+                                <span className="text-amber-300/80">{Icons.arrow}</span>
                                 {opt}
                               </button>
                             ))}
@@ -763,12 +795,12 @@ export default function App() {
                   <div className="flex w-full justify-start animate-fade-slide">
                     <div className="max-w-[92%] rounded-2xl border border-cyan-400/15 bg-white/5 px-4 py-3 text-sm text-slate-200">
                       <div className="flex items-center gap-3">
-                        <i className="fa-solid fa-cog fa-spin text-cyan-400" />
+                        <span className="text-cyan-400">{Icons.cog}</span>
                         <div className="flex flex-col gap-1">
                           <span className="font-medium">Processing your request...</span>
                           {estimatedTime && (
-                            <span className="text-xs text-cyan-300/80">
-                              <i className="fa-regular fa-clock mr-1" />
+                            <span className="text-xs text-cyan-300/80 flex items-center gap-1">
+                              {Icons.clock}
                               Estimated wait: {estimatedTime}
                             </span>
                           )}
@@ -799,23 +831,22 @@ export default function App() {
                       className={cn(
                         "group inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
                         "border-white/10 bg-white/5 hover:bg-white/10",
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
-                        "shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                       )}
                     >
-                      <i className="fa-solid fa-folder-open text-cyan-300/90" />
+                      <span className="text-cyan-300/90">{Icons.folder}</span>
                       <span className="text-cyan-300/90">Choose files</span>
                     </button>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300">
-                          <i className="fa-regular fa-file-pdf text-slate-400" />
+                          <span className="text-slate-400">{Icons.file}</span>
                           {hasMultiple ? "Multiple files" : "File"}
                         </span>
                         {files.length ? (
                           <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] text-cyan-100 animate-chip-in">
-                            <i className="fa-solid fa-check-circle text-cyan-300 text-xs" />
+                            <span className="text-cyan-300">{Icons.checkCircle}</span>
                             <span className="truncate max-w-[14rem]">
                               {lastFileName || files[0]?.name}
                             </span>
@@ -850,12 +881,12 @@ export default function App() {
                     >
                       {loading ? (
                         <span className="inline-flex items-center gap-2">
-                          <i className="fa-solid fa-spinner fa-spin" />
+                          {Icons.spinner}
                           Processing
                         </span>
                       ) : (
                         <>
-                          <i className="fa-solid fa-play" />
+                          {Icons.play}
                           Run
                         </>
                       )}
@@ -868,15 +899,14 @@ export default function App() {
                     </button>
 
                     <div className="w-full md:w-[16rem]">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl shadow-[0_12px_60px_rgba(0,0,0,0.30)]">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <div className="text-[11px] font-medium text-slate-200">
-                            <i className="fa-solid fa-lightbulb text-amber-300/80 mr-1" />
-                            Prompt ideas
+                          <div className="text-[11px] font-medium text-slate-200 flex items-center gap-1">
+                            <span className="text-amber-300/80">{Icons.lightbulb}</span>
+                            Ideas
                           </div>
                           <div className="text-[10px] text-slate-400">
-                            <i className="fa-solid fa-hand-pointer text-slate-500 mr-1" />
-                            tap
+                            tap to use
                           </div>
                         </div>
 
@@ -892,18 +922,15 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setPrompt(s.replace(/^Try:\s*/i, ""));
+                                      setPrompt(s);
                                       setTimeout(
                                         () => promptRef.current?.focus(),
                                         0
                                       );
                                     }}
-                                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200/90 transition hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+                                    className="w-full rounded-lg px-3 py-1.5 text-left text-sm text-slate-200/90 transition hover:bg-white/5 hover:text-white focus:outline-none"
                                   >
-                                    <span className="text-cyan-300/80">
-                                      Try:
-                                    </span>{" "}
-                                    {s.replace(/^Try:\s*/i, "")}
+                                    {s}
                                   </button>
                                 </li>
                               ))}
@@ -927,7 +954,7 @@ export default function App() {
                   >
                     <div className="flex items-start gap-3 p-3">
                       <div className="mt-1 h-8 w-8 shrink-0 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-cyan-300/80">
-                        <i className="fa-solid fa-wand-magic-sparkles" />
+                        {Icons.wand}
                       </div>
                       <div className="flex-1">
                         <textarea
@@ -984,12 +1011,12 @@ export default function App() {
                   >
                     {loading ? (
                       <span className="inline-flex items-center gap-2">
-                        <i className="fa-solid fa-spinner fa-spin" />
+                        {Icons.spinner}
                         Processing
                       </span>
                     ) : (
                       <>
-                        <i className="fa-solid fa-play" />
+                        {Icons.play}
                         Run
                       </>
                     )}
@@ -1013,7 +1040,7 @@ export default function App() {
                         "animate-download-blink"
                     )}
                   >
-                    <i className="fa-solid fa-download" />
+                    {Icons.download}
                     {result?.output_file
                       ? "Download"
                       : loading
@@ -1026,24 +1053,24 @@ export default function App() {
                 <div className="hidden md:flex flex-row gap-3 items-center justify-between">
                   <div className="text-xs text-slate-400">
                     {error ? (
-                      <span className="text-rose-200">
-                        <i className="fa-solid fa-circle-exclamation mr-1" />
+                      <span className="text-rose-200 flex items-center gap-1">
+                        {Icons.error}
                         {error}
                       </span>
                     ) : clarification ? (
-                      <span className="text-amber-200">
-                        <i className="fa-solid fa-circle-question mr-1" />
+                      <span className="text-amber-200 flex items-center gap-1">
+                        {Icons.question}
                         Agent needs one more detail.
                       </span>
                     ) : result ? (
-                      <span className="text-teal-200">
-                        <i className="fa-solid fa-circle-check mr-1" />
+                      <span className="text-teal-200 flex items-center gap-1">
+                        {Icons.checkCircle}
                         Output ready for download.
                       </span>
                     ) : (
-                      <span>
-                        <i className="fa-solid fa-upload mr-1 text-slate-500" />
-                        Upload PDFs, then send your instruction.
+                      <span className="flex items-center gap-1">
+                        <span className="text-slate-500">{Icons.upload}</span>
+                        Upload files, then describe what you need.
                       </span>
                     )}
                   </div>
@@ -1060,13 +1087,13 @@ export default function App() {
                       "border",
                       !result?.output_file
                         ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
-                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15 shadow-[0_0_0_1px_rgba(45,212,191,0.12)]",
+                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15",
                       downloadBlink &&
                         result?.output_file &&
                         "animate-download-blink"
                     )}
                   >
-                    <i className="fa-solid fa-download" />
+                    {Icons.download}
                     {result?.output_file
                       ? downloadLabel
                       : loading
@@ -1085,15 +1112,15 @@ export default function App() {
           </section>
 
           <aside className="hidden md:block">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl shadow-[0_12px_60px_rgba(0,0,0,0.35)]">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="mb-2 text-xs font-medium text-slate-200 flex items-center gap-2">
-                <i className="fa-solid fa-clipboard-list text-cyan-400/80" />
+                <span className="text-cyan-400/80">{Icons.clipboard}</span>
                 Session
               </div>
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <i className="fa-regular fa-file text-slate-500" />
+                    <span className="text-slate-500">{Icons.file}</span>
                     Selected
                   </div>
                   <div className="truncate">
@@ -1102,23 +1129,23 @@ export default function App() {
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <i className="fa-solid fa-signal text-slate-500" />
+                    <span className="text-slate-500">{Icons.signal}</span>
                     Status
                   </div>
                   <div className="flex items-center gap-1.5">
                     {loading ? (
                       <>
-                        <i className="fa-solid fa-spinner fa-spin text-cyan-400 text-xs" />
+                        <span className="text-cyan-400">{Icons.spinner}</span>
                         Processing
                       </>
                     ) : result ? (
                       <>
-                        <i className="fa-solid fa-check text-teal-400 text-xs" />
+                        <span className="text-teal-400">{Icons.check}</span>
                         Ready
                       </>
                     ) : (
                       <>
-                        <i className="fa-solid fa-minus text-slate-500 text-xs" />
+                        <span className="text-slate-500">{Icons.minus}</span>
                         Idle
                       </>
                     )}
@@ -1127,7 +1154,7 @@ export default function App() {
                 {loading && estimatedTime && (
                   <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2">
                     <div className="text-[11px] text-cyan-300 flex items-center gap-1">
-                      <i className="fa-regular fa-clock" />
+                      {Icons.clock}
                       Est. Wait
                     </div>
                     <div className="text-cyan-100 font-medium">
@@ -1137,7 +1164,7 @@ export default function App() {
                 )}
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <i className="fa-solid fa-file-export text-slate-500" />
+                    <span className="text-slate-500">{Icons.export}</span>
                     Output
                   </div>
                   <div className="truncate">{result?.output_file || "—"}</div>
