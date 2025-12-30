@@ -4,7 +4,6 @@ AI Clarification Layer - Handles ambiguous or incomplete user prompts by interac
 
 from app.ai_parser import ai_parser
 from typing import Union
-from app.models import ParsedIntent
 from app.utils import (
     normalize_whitespace,
     fuzzy_match_keyword,
@@ -30,7 +29,7 @@ from app.utils import (
 )
 
 class ClarificationResult:
-    def __init__(self, intent: Union[ParsedIntent, list[ParsedIntent], None] = None, clarification: str = None, options: list[str] = None):
+    def __init__(self, intent: Union['ParsedIntent', list['ParsedIntent'], None] = None, clarification: str = None, options: list[str] = None):
         self.intent = intent
         self.clarification = clarification
         self.options = options
@@ -40,6 +39,7 @@ import re
 import os
 import json
 from app.models import (
+    ParsedIntent,
     CompressIntent,
     CompressToTargetIntent,
     DocxConvertIntent,
