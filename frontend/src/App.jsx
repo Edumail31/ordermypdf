@@ -171,6 +171,42 @@ function getOrCreateSessionId() {
   }
 }
 
+// Job persistence helpers for recovery after page refresh/close
+const JOB_STORAGE_KEY = "ordermypdf_pending_job";
+
+function savePendingJob(jobId, prompt, fileName, estTime) {
+  try {
+    const data = { jobId, prompt, fileName, estTime, startedAt: Date.now() };
+    window.localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.log("Could not save job to localStorage", e);
+  }
+}
+
+function loadPendingJob() {
+  try {
+    const raw = window.localStorage.getItem(JOB_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    // Expire jobs after 30 minutes (same as server)
+    if (Date.now() - data.startedAt > 30 * 60 * 1000) {
+      clearPendingJob();
+      return null;
+    }
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearPendingJob() {
+  try {
+    window.localStorage.removeItem(JOB_STORAGE_KEY);
+  } catch (e) {
+    // Ignore
+  }
+}
+
 function inferDownloadLabel(result) {
   if (!result?.output_file) return "Download";
   const lower = String(result.output_file).toLowerCase();
@@ -546,6 +582,172 @@ export default function App() {
   );
 
   const [statusIndex, setStatusIndex] = useState(0);
+  const [recoveredJob, setRecoveredJob] = useState(null);
+
+  // Check for pending job on mount (recovery after page refresh)
+  useEffect(() => {
+    const pending = loadPendingJob();
+    if (!pending) return;
+
+    setRecoveredJob(pending);
+    
+    // Show recovery message
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: makeId(),
+        role: "agent",
+        tone: "neutral",
+        text: `🔄 Found a pending job from earlier. Checking status...`,
+      },
+    ]);
+
+    // Resume polling for this job
+    resumePendingJob(pending);
+  }, []);
+
+  // Resume polling for a recovered job
+  const resumePendingJob = async (pending) => {
+    const { jobId, prompt, fileName, estTime } = pending;
+    
+    setLoading(true);
+    setIsUploading(false);
+    setEstimatedTime(estTime || "~30s");
+    setProcessingMessage("Checking job status...");
+    currentJobIdRef.current = jobId;
+    abortControllerRef.current = new AbortController();
+
+    setMessages((prev) => [
+      ...prev,
+      { id: makeId(), role: "agent", tone: "status", text: `Resuming: ${prompt || fileName}...` },
+    ]);
+
+    try {
+      let completed = false;
+      let pollCount = 0;
+      const maxPolls = 600;
+
+      while (!completed && pollCount < maxPolls) {
+        if (abortControllerRef.current?.signal.aborted) {
+          throw new DOMException("Cancelled", "AbortError");
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        pollCount++;
+
+        const statusRes = await fetch(`/job/${jobId}/status`, {
+          signal: abortControllerRef.current?.signal,
+        });
+
+        if (statusRes.status === 404) {
+          // Job expired or doesn't exist
+          clearPendingJob();
+          setLoading(false);
+          setRecoveredJob(null);
+          setMessages((prev) => {
+            const trimmed = prev.filter((m) => m.tone !== "status");
+            return [
+              ...trimmed,
+              {
+                id: makeId(),
+                role: "agent",
+                tone: "neutral",
+                text: "Previous job expired. Please upload your file and try again.",
+              },
+            ];
+          });
+          return;
+        }
+
+        if (!statusRes.ok) {
+          throw new Error(`Status check failed: ${statusRes.status}`);
+        }
+
+        const statusData = await statusRes.json();
+        setProcessingMessage(statusData.message || "Processing...");
+
+        setMessages((prev) => {
+          const trimmed = prev.filter((m) => m.tone !== "status");
+          return [
+            ...trimmed,
+            {
+              id: makeId(),
+              role: "agent",
+              tone: "status",
+              text: `${statusData.message || "Processing..."} (Est: ${estTime})`,
+            },
+          ];
+        });
+
+        if (statusData.status === "completed" || statusData.status === "failed") {
+          completed = true;
+          currentJobIdRef.current = null;
+          clearPendingJob();
+          setRecoveredJob(null);
+
+          setMessages((prev) => prev.filter((m) => m.tone !== "status"));
+
+          const resultData = statusData.result;
+
+          if (resultData?.status === "success") {
+            setResult({
+              status: "success",
+              output_file: resultData.output_file,
+              message: resultData.message,
+              operation: resultData.operation,
+            });
+            setEstimatedTime("");
+            setProcessingMessage("Complete!");
+            setDownloadBlink(true);
+            setTimeout(() => setDownloadBlink(false), 1600);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: makeId(),
+                role: "agent",
+                tone: "success",
+                text: resultData.message || "Done! Your file is ready.",
+              },
+            ]);
+          } else {
+            const msg = resultData?.message || "Processing failed";
+            setError(msg);
+            setMessages((prev) => [
+              ...prev,
+              { id: makeId(), role: "agent", tone: "error", text: msg },
+            ]);
+          }
+        } else if (statusData.status === "cancelled") {
+          completed = true;
+          currentJobIdRef.current = null;
+          clearPendingJob();
+          setRecoveredJob(null);
+        }
+      }
+
+      if (!completed) {
+        clearPendingJob();
+        throw new Error("Job timed out.");
+      }
+    } catch (err) {
+      currentJobIdRef.current = null;
+      setEstimatedTime("");
+      setProcessingMessage("");
+      clearPendingJob();
+      setRecoveredJob(null);
+
+      if (err?.name !== "AbortError") {
+        const msg = `Failed to resume job: ${err?.message || err}`;
+        setError(msg);
+        setMessages((prev) => {
+          const trimmed = prev.filter((m) => m.tone !== "status");
+          return [...trimmed, { id: makeId(), role: "agent", tone: "error", text: msg }];
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Subtle cursor glow for "premium" depth.
@@ -687,6 +889,7 @@ export default function App() {
       }
       currentJobIdRef.current = null;
     }
+    clearPendingJob(); // Clear localStorage when stopped
     
     setLoading(false);
     setEstimatedTime("");
@@ -842,6 +1045,9 @@ export default function App() {
       const jobId = uploadResult.job_id;
       currentJobIdRef.current = jobId;
 
+      // Save job to localStorage for recovery
+      savePendingJob(jobId, userText, files[0]?.name || "file", estTime);
+
       // Upload complete - switch to processing phase
       setIsUploading(false);
       setUploadProgress(100);
@@ -907,6 +1113,7 @@ export default function App() {
         if (statusData.status === "completed" || statusData.status === "failed") {
           completed = true;
           currentJobIdRef.current = null;
+          clearPendingJob(); // Clear localStorage on completion
           
           // Remove the status bubble
           setMessages((prev) => {
@@ -974,6 +1181,7 @@ export default function App() {
         } else if (statusData.status === "cancelled") {
           completed = true;
           currentJobIdRef.current = null;
+          clearPendingJob(); // Clear localStorage on cancel
         }
       }
 
