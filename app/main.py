@@ -182,6 +182,11 @@ def _build_prompt_from_reply(base_instruction: str, question: str, user_reply: s
     return normalize_whitespace(f"{base} {reply}") if base else reply
 
 
+def _normalize_ws(s: str) -> str:
+    """Normalize whitespace and lowercase for comparison."""
+    return " ".join((s or "").split()).lower().strip()
+
+
 def _resolve_uploaded_filename(requested: str, uploaded_files: list[str]) -> str:
     """Resolve a potentially mistyped filename to one of the uploaded filenames.
 

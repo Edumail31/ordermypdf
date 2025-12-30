@@ -940,6 +940,12 @@ export default function App() {
 
   // Stop/Cancel the current process
   const stopProcess = async () => {
+    // Abort any ongoing XHR upload
+    if (abortControllerRef.current?.xhr) {
+      abortControllerRef.current.xhr.abort();
+      abortControllerRef.current.xhr = null;
+    }
+    
     // Cancel the polling abort controller
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
