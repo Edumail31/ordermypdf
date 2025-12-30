@@ -415,8 +415,17 @@ def execute_operation(intent: ParsedIntent) -> tuple[str, str]:
         return output_file, message
     elif intent.operation_type == "compress_to_target":
         require_pdf(operation.file)
-        output_file = compress_pdf_to_target(operation.file, operation.target_mb)
-        message = f"Compressed {operation.file} to under {operation.target_mb} MB"
+        try:
+            output_file = compress_pdf_to_target(operation.file, operation.target_mb)
+            message = f"Compressed {operation.file} to under {operation.target_mb} MB"
+        except Exception as e:
+            err_msg = str(e)
+            if err_msg.startswith("PARTIAL_SUCCESS:"):
+                # Partial success - return the best compressed file with info
+                output_file = "compressed_target_output.pdf"
+                message = err_msg.replace("PARTIAL_SUCCESS:", "")
+            else:
+                raise
         return output_file, message
     elif intent.operation_type == "rotate":
         require_pdf(operation.file)

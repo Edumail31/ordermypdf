@@ -323,7 +323,7 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
         str: Output file name
     Raises:
         FileNotFoundError: If input file doesn't exist
-        Exception: If compression fails or target not reached
+        Exception: If compression fails completely
     """
     ensure_temp_dirs()
     input_path = get_upload_path(file_name)
@@ -332,6 +332,10 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
         raise FileNotFoundError(f"File not found: {file_name}")
     
     gs_executable = _resolve_ghostscript_executable(raise_if_missing=True)
+    
+    original_size_mb = os.path.getsize(input_path) / (1024 * 1024)
+    best_size_mb = original_size_mb
+    best_quality = None
     
     # Try different quality settings until under target
     qualities = ["screen", "ebook", "printer", "prepress"]
@@ -350,11 +354,30 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
             size_mb = os.path.getsize(output_path) / (1024 * 1024)
             if size_mb <= target_mb:
                 return output_name
+            # Track best compression achieved
+            if size_mb < best_size_mb:
+                best_size_mb = size_mb
+                best_quality = quality
         except Exception as e:
             continue
-    # If not under target, try to compress further by downsampling
-    # (Not implemented: advanced iterative compression)
-    raise Exception(f"Could not compress {file_name} under {target_mb} MB with available settings.")
+    
+    # If we couldn't reach target but got some compression, return best result with info
+    if best_quality:
+        # Re-compress with best quality setting
+        subprocess.run([
+            gs_executable,
+            "-sDEVICE=pdfwrite",
+            f"-dPDFSETTINGS=/{best_quality}",
+            "-dNOPAUSE",
+            "-dBATCH",
+            "-dQUIET",
+            f"-sOutputFile={output_path}",
+            input_path
+        ], check=True)
+        # Return with special marker that will be caught
+        raise Exception(f"PARTIAL_SUCCESS:Compressed from {original_size_mb:.1f}MB to {best_size_mb:.1f}MB (target was {target_mb}MB). Maximum compression reached.")
+    
+    raise Exception(f"Could not compress {file_name}. The PDF may already be optimized.")
 
 
 # ============================================
