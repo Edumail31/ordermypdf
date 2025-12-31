@@ -588,7 +588,7 @@ export default function App() {
       id: makeId(),
       role: "agent",
       tone: "neutral",
-      text: "Tell me what you want to do with your PDFs — I’ll handle the rest.",
+      text: "Upload your files, then tell me what to do — I can merge, split, compress, OCR, convert, and clean up PDFs.",
     },
   ]);
 
@@ -624,9 +624,14 @@ export default function App() {
       "merge all PDFs",
       "delete pages 3-5",
       "convert to Word",
+      "convert this DOCX to PDF",
       "extract first 10 pages",
       "rotate all pages 90°",
       "OCR this scanned doc",
+      "remove blank pages",
+      "remove duplicate pages",
+      "enhance scan (make it clearer)",
+      "flatten PDF",
       "add page numbers",
       "export as PNG images",
       "compress then split page 1",
@@ -1485,8 +1490,9 @@ export default function App() {
               <span className="text-amber-400/80 mr-1 inline-block">
                 {Icons.bolt}
               </span>
-              Merge, split, compress, OCR, convert (PDF ↔ DOCX/JPG/PNG) — just
-              upload and describe.
+              Merge, split, compress, OCR, convert (PDF ↔ DOCX/JPG/PNG), remove
+              blank/duplicate pages, enhance scans, and flatten PDFs — just upload
+              and describe.
             </p>
           </div>
         </header>
