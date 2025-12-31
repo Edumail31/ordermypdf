@@ -286,10 +286,12 @@ def compress_pdf(file_name: str, output_name: str = "compressed_output.pdf", pre
 # ============================================
 def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> str:
     """
-    Convert a PDF file to DOCX format (low-memory, text-first).
+    Convert a PDF file to DOCX format with best-effort formatting while staying low-RAM.
 
-    NOTE: This prioritizes stability on low-RAM servers (Render free tier).
-    It extracts text per page and writes it into a DOCX. Layout fidelity is not preserved.
+    Strategy:
+    - For small PDFs, try `pdf2docx` (better layout fidelity, but can be memory-hungry).
+    - For larger PDFs (or if `pdf2docx` fails), use a low-RAM PyMuPDF span-based writer that
+      preserves line breaks and basic styling (bold/italic/font size) better than plain text.
     """
     ensure_temp_dirs()
     input_path = get_upload_path(file_name)
@@ -306,27 +308,112 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
             "Install with: pip install python-docx"
         )
 
-    try:
-        doc = fitz.open(input_path)
+    # Helper: low-RAM, layout-aware DOCX writer
+    def _low_ram_layout_docx() -> None:
+        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT  # type: ignore
+
+        pdf = fitz.open(input_path)
         out = Document()
         style = out.styles["Normal"]
         style.font.name = "Calibri"
         style.font.size = Pt(11)
 
-        for page_index in range(doc.page_count):
-            page = doc.load_page(page_index)
-            text = (page.get_text("text") or "").strip()
-            if text:
-                for line in text.splitlines():
-                    out.add_paragraph(line)
-            else:
-                out.add_paragraph("")
+        for page_index in range(pdf.page_count):
+            page = pdf.load_page(page_index)
+            page_dict = page.get_text("dict")
 
-            if page_index != doc.page_count - 1:
+            blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
+            for block in blocks:
+                # 0 = text, 1 = image
+                if not isinstance(block, dict) or block.get("type") != 0:
+                    continue
+
+                # Basic alignment heuristic from bbox
+                bbox = block.get("bbox") or None
+                align = WD_PARAGRAPH_ALIGNMENT.LEFT
+                try:
+                    if bbox and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+                        x0, _, x1, _ = bbox
+                        mid = (float(x0) + float(x1)) / 2.0
+                        if abs(mid - (page.rect.width / 2.0)) <= (page.rect.width * 0.10):
+                            align = WD_PARAGRAPH_ALIGNMENT.CENTER
+                except Exception:
+                    pass
+
+                p = out.add_paragraph()
+                p.alignment = align
+
+                lines = block.get("lines", [])
+                for li, line in enumerate(lines):
+                    spans = line.get("spans", []) if isinstance(line, dict) else []
+                    for span in spans:
+                        if not isinstance(span, dict):
+                            continue
+                        text = span.get("text") or ""
+                        if not text:
+                            continue
+                        run = p.add_run(text)
+                        font_name = (span.get("font") or "").lower()
+                        run.bold = "bold" in font_name
+                        run.italic = "italic" in font_name or "oblique" in font_name
+                        try:
+                            sz = float(span.get("size") or 11)
+                            # Clamp to a sane range to avoid huge fonts.
+                            run.font.size = Pt(max(8, min(28, int(round(sz)))))
+                        except Exception:
+                            pass
+
+                    # Preserve line breaks inside a block
+                    if li != len(lines) - 1:
+                        try:
+                            p.add_run().add_break()
+                        except Exception:
+                            pass
+
+                # Add a small separation between blocks
+                if p.text.strip() == "":
+                    # Avoid tons of empty paragraphs
+                    continue
+
+            if page_index != pdf.page_count - 1:
                 out.add_page_break()
 
-        doc.close()
+        pdf.close()
         out.save(output_path)
+
+    # Decide whether to attempt pdf2docx (higher fidelity, higher risk)
+    try:
+        size_mb = os.path.getsize(input_path) / (1024 * 1024)
+    except Exception:
+        size_mb = 0
+
+    try:
+        probe = fitz.open(input_path)
+        page_count = probe.page_count
+        probe.close()
+    except Exception:
+        page_count = 0
+
+    try_pdf2docx = bool(size_mb and size_mb <= 15 and page_count and page_count <= 30)
+
+    if try_pdf2docx:
+        try:
+            cv = Converter(input_path)
+            cv.convert(output_path, start=0, end=None)
+            cv.close()
+            return output_name
+        except Exception:
+            # Fall back to low-RAM layout mode
+            try:
+                try:
+                    cv.close()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    try:
+        _low_ram_layout_docx()
     except Exception as e:
         raise Exception(f"PDF to DOCX conversion failed: {e}")
     return output_name
