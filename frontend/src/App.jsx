@@ -455,6 +455,28 @@ function normalizePromptForSend(text) {
   });
 }
 
+function formatRemainingSeconds(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  if (!Number.isFinite(s) || s <= 0) return "";
+  if (s < 60) return `~${s}s`;
+  const mins = Math.floor(s / 60);
+  const rem = s % 60;
+  if (mins < 60) return rem ? `~${mins}m ${rem}s` : `~${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const m2 = mins % 60;
+  return m2 ? `~${hrs}h ${m2}m` : `~${hrs}h`;
+}
+
+function buildProcessingText(msg, estimatedRemainingSeconds, status) {
+  const base = String(msg || "Processing...").trim() || "Processing...";
+  const eta = formatRemainingSeconds(estimatedRemainingSeconds);
+  if (!eta) {
+    if (status === "pending") return `${base} (queueing...)`;
+    return base;
+  }
+  return `${base} (ETA ${eta})`;
+}
+
 function inferClarificationKind(question) {
   const q = String(question || "").toLowerCase();
   if (q.includes("rotate") && q.includes("degree")) return "rotate_degrees";
@@ -662,14 +684,14 @@ export default function App() {
     try {
       let completed = false;
       let pollCount = 0;
-      const maxPolls = 300; // 10 minutes at 2 second intervals
+      const maxPolls = 600; // 10 minutes at 1 second intervals
 
       while (!completed && pollCount < maxPolls) {
         if (abortControllerRef.current?.signal.aborted) {
           throw new DOMException("Cancelled", "AbortError");
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 2000)); // Poll every 2 seconds
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Poll every 1 second
         pollCount++;
 
         const statusRes = await fetch(`/job/${jobId}/status`, {
@@ -702,7 +724,12 @@ export default function App() {
 
         const statusData = await statusRes.json();
         const msg = statusData.message || "Processing...";
-        setProcessingMessage(msg);
+        const statusText = buildProcessingText(
+          msg,
+          statusData.estimated_remaining,
+          statusData.status
+        );
+        setProcessingMessage(statusText);
 
         setMessages((prev) => {
           const trimmed = prev.filter((m) => m.tone !== "status");
@@ -712,7 +739,7 @@ export default function App() {
               id: makeId(),
               role: "agent",
               tone: "status",
-              text: `${msg} (${statusData.progress || 0}%)`,
+              text: statusText,
             },
           ];
         });
@@ -1230,7 +1257,7 @@ export default function App() {
       // Step 2: Poll for status until done
       let completed = false;
       let pollCount = 0;
-      const maxPolls = 300; // 10 minutes at 2 second intervals
+      const maxPolls = 600; // 10 minutes at 1 second intervals
 
       while (!completed && pollCount < maxPolls) {
         // Check if cancelled
@@ -1238,7 +1265,7 @@ export default function App() {
           throw new DOMException("Cancelled", "AbortError");
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 2000)); // Poll every 2 seconds
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Poll every 1 second
         pollCount++;
 
         const statusRes = await fetch(`/job/${jobId}/status`, {
@@ -1252,8 +1279,14 @@ export default function App() {
         const statusData = await statusRes.json();
         const msg = statusData.message || "Processing...";
 
+        const statusText = buildProcessingText(
+          msg,
+          statusData.estimated_remaining,
+          statusData.status
+        );
+
         // Update processing message
-        setProcessingMessage(msg);
+        setProcessingMessage(statusText);
 
         // Update the status bubble - simple progress display
         setMessages((prev) => {
@@ -1267,7 +1300,7 @@ export default function App() {
               id: makeId(),
               role: "agent",
               tone: "status",
-              text: `${msg} (${statusData.progress || 0}%)`,
+              text: statusText,
             },
           ];
         });

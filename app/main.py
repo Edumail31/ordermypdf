@@ -1089,7 +1089,7 @@ async def get_job_status(job_id: str):
     """
     Get the current status and progress of a job.
     
-    Poll this endpoint every 2 seconds while status is "pending" or "processing".
+    Poll this endpoint every 1 second while status is "pending" or "processing".
     
     Returns:
     - status: "pending" | "processing" | "completed" | "failed" | "cancelled"
