@@ -253,6 +253,14 @@ def _fix_common_connector_typos(text: str) -> str:
     s = text
     s = re.sub(r"\badn\b", "and", s, flags=re.IGNORECASE)
     s = re.sub(r"\bthne\b", "then", s, flags=re.IGNORECASE)
+
+    # Common action typos seen in the training corpus.
+    # Keep this conservative: only fix full-word matches.
+    s = re.sub(r"\bcompres\b", "compress", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bcomprss\b", "compress", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bsplt\b", "split", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bmerg\b", "merge", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bconver\b", "convert", s, flags=re.IGNORECASE)
     return s
 
 
@@ -683,9 +691,55 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
     """
     
     # Optional context from the UI: helps interpret very short replies.
+    # Also normalizes a few common corpus typos (e.g., compres/splt).
     user_prompt = _fix_common_connector_typos(user_prompt)
     prompt_for_match = _normalize_prompt_for_heuristics(user_prompt)
     prompt_compact = prompt_for_match.strip().lower()
+
+    # Deterministic convert shortcuts for common ambiguous phrasing.
+    # These improve reliability (and reduce LLM calls) for corpus-style commands.
+    if file_names:
+        primary = file_names[0]
+        primary_lower = (primary or "").lower()
+        wants_convert = bool(re.search(r"\b(convert|change)\b", prompt_for_match, re.IGNORECASE))
+        wants_word = bool(re.search(r"\b(word|docx|doc)\b", prompt_for_match, re.IGNORECASE))
+        wants_pdf = bool(re.search(r"\bpdf\b", prompt_for_match, re.IGNORECASE))
+        wants_images = bool(re.search(r"\b(images?|png|jpe?g)\b", prompt_for_match, re.IGNORECASE))
+
+        # DOCX → PDF
+        if wants_convert and wants_pdf and primary_lower.endswith(".docx"):
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="docx_to_pdf",
+                    docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                )
+            )
+
+        # PDF → DOCX
+        if wants_convert and wants_word and primary_lower.endswith(".pdf"):
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="pdf_to_docx",
+                    pdf_to_docx={"operation": "pdf_to_docx", "file": primary},
+                )
+            )
+
+        # PDF → Images
+        if wants_convert and wants_images and primary_lower.endswith(".pdf"):
+            fmt = "png"
+            if re.search(r"\bjpe?g\b|\bjpg\b", prompt_for_match, re.IGNORECASE):
+                fmt = "jpg"
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="pdf_to_images",
+                    pdf_to_images={
+                        "operation": "pdf_to_images",
+                        "file": primary,
+                        "format": fmt,
+                        "dpi": 150,
+                    },
+                )
+            )
 
     # If user answered with only a number and the last question was about degrees, treat as rotation.
     if (
