@@ -53,6 +53,147 @@ from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDE
 from app.job_queue import job_queue, JobStatus
 
 
+def _memory_snapshot() -> dict:
+    """Best-effort live memory snapshot.
+
+    Returns a dict with (when available):
+    - rss_mb: current process resident set size in MB
+    - peak_rss_mb: peak RSS in MB (best-effort)
+    - total_mb: total system memory in MB
+    - avail_mb: available system memory in MB
+    - level: low|medium|high based on memory pressure
+
+    This is intentionally dependency-free (no psutil) and cheap enough
+    to call on each /job/{id}/status poll.
+    """
+    rss_mb = None
+    peak_rss_mb = None
+    total_mb = None
+    avail_mb = None
+
+    # Linux (/proc) path (Render)
+    try:
+        if os.name == "posix" and os.path.exists("/proc/self/statm"):
+            with open("/proc/self/statm", "r", encoding="utf-8") as f:
+                parts = f.read().strip().split()
+            if len(parts) >= 2:
+                rss_pages = int(parts[1])
+                page_size = os.sysconf("SC_PAGE_SIZE")
+                rss_mb = round((rss_pages * page_size) / (1024 * 1024))
+    except Exception:
+        rss_mb = None
+
+    try:
+        if os.name == "posix" and os.path.exists("/proc/meminfo"):
+            mem_total_kb = None
+            mem_avail_kb = None
+            with open("/proc/meminfo", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        mem_total_kb = int(line.split()[1])
+                    elif line.startswith("MemAvailable:"):
+                        mem_avail_kb = int(line.split()[1])
+                    if mem_total_kb is not None and mem_avail_kb is not None:
+                        break
+            if mem_total_kb is not None:
+                total_mb = round(mem_total_kb / 1024)
+            if mem_avail_kb is not None:
+                avail_mb = round(mem_avail_kb / 1024)
+    except Exception:
+        total_mb = None
+        avail_mb = None
+
+    # Windows fallback via ctypes (for local dev on Windows)
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                    ("PrivateUsage", ctypes.c_size_t),
+                ]
+
+            GetCurrentProcess = ctypes.windll.kernel32.GetCurrentProcess
+            GetProcessMemoryInfo = ctypes.windll.psapi.GetProcessMemoryInfo
+
+            counters = PROCESS_MEMORY_COUNTERS_EX()
+            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS_EX)
+            if GetProcessMemoryInfo(GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+                rss_mb = round(counters.WorkingSetSize / (1024 * 1024))
+                peak_rss_mb = round(counters.PeakWorkingSetSize / (1024 * 1024))
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", wintypes.DWORD),
+                    ("dwMemoryLoad", wintypes.DWORD),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            mem = MEMORYSTATUSEX()
+            mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem)):
+                total_mb = round(mem.ullTotalPhys / (1024 * 1024))
+                avail_mb = round(mem.ullAvailPhys / (1024 * 1024))
+        except Exception:
+            pass
+
+    # Peak RSS (posix)
+    if peak_rss_mb is None and os.name == "posix":
+        try:
+            import resource
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            # On Linux ru_maxrss is KB; on macOS it's bytes.
+            peak_kb = getattr(ru, "ru_maxrss", 0) or 0
+            # Render is Linux; treat as KB.
+            peak_rss_mb = round(peak_kb / 1024)
+        except Exception:
+            peak_rss_mb = None
+
+    # Determine level (low/medium/high) based on pressure.
+    level = "low"
+    try:
+        if avail_mb is not None:
+            if avail_mb < 250:
+                level = "high"
+            elif avail_mb < 500:
+                level = "medium"
+        if rss_mb is not None:
+            if rss_mb >= 700:
+                level = "high"
+            elif rss_mb >= 400 and level != "high":
+                level = "medium"
+    except Exception:
+        level = "low"
+
+    out = {"level": level}
+    if rss_mb is not None:
+        out["rss_mb"] = int(rss_mb)
+    if peak_rss_mb is not None:
+        out["peak_rss_mb"] = int(peak_rss_mb)
+    if total_mb is not None:
+        out["total_mb"] = int(total_mb)
+    if avail_mb is not None:
+        out["avail_mb"] = int(avail_mb)
+    return out
+
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FRONTEND_DIST_DIR = os.path.join(PROJECT_ROOT, "frontend", "dist")
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
@@ -1182,6 +1323,7 @@ async def get_job_status(job_id: str):
         "progress": job.progress,
         "message": job.progress_message,
         "created_at": job.created_at,
+        "ram": _memory_snapshot(),
     }
     
     # Calculate dynamic estimated time remaining

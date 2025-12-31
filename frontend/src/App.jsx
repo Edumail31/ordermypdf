@@ -604,6 +604,7 @@ export default function App() {
   const currentJobIdRef = useRef(null);
   const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState("");
   const [fileAttention, setFileAttention] = useState(false);
+  const [ramStats, setRamStats] = useState(null);
   
   // Track uploaded files to avoid re-uploading
   const [uploadedFileNames, setUploadedFileNames] = useState([]); // file names on server
@@ -731,12 +732,15 @@ export default function App() {
 
         const statusData = await statusRes.json();
         const msg = statusData.message || "Processing...";
+
+        updateRamFromStatus(statusData);
         const statusText = buildProcessingText(
           msg,
           statusData.estimated_remaining,
           statusData.status
         );
         setProcessingMessage(statusText);
+        setRamStats(statusData.ram || null);
 
         setMessages((prev) => {
           const trimmed = prev.filter((m) => m.tone !== "status");
@@ -1041,6 +1045,7 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(false);
     setProcessingMessage("");
+    setRamStats(null);
     showToast("⏹️ Process stopped by user.", 3000);
     setMessages((prev) => [
       ...prev.filter((m, idx) => {
@@ -1083,6 +1088,7 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(true);
     setProcessingMessage("");
+    setRamStats(null);
 
     const rawUserText = rawInput;
     setLastSubmittedPrompt(rawUserText);
@@ -1152,6 +1158,14 @@ export default function App() {
       } catch (e) {
         // Wake lock not critical
       }
+
+      const updateRamFromStatus = (statusData) => {
+        try {
+          setRamStats(statusData?.ram || null);
+        } catch {
+          // ignore
+        }
+      };
 
       let jobId;
       let resultFileNames = [];
@@ -1352,6 +1366,7 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on completion
+          setRamStats(null);
 
           // Remove the status bubble
           setMessages((prev) => {
@@ -1422,6 +1437,7 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on cancel
+          setRamStats(null);
         }
       }
 
@@ -1484,20 +1500,13 @@ export default function App() {
     ? `${files.length} file${files.length === 1 ? "" : "s"}`
     : "No files";
 
-  const totalSelectedMB = useMemo(() => getTotalFileSizeMB(files), [files]);
-  const loadLevel = useMemo(() => {
-    const p = (lastSubmittedPrompt || prompt || "").toLowerCase();
-    const factor = /\bocr\b/.test(p) ? totalSelectedMB * 1.6 : totalSelectedMB;
-    if (factor >= 80) return "high";
-    if (factor >= 40) return "medium";
-    return "low";
-  }, [lastSubmittedPrompt, prompt, totalSelectedMB]);
-
-  const loadIndicator = useMemo(() => {
-    if (loadLevel === "high") return { label: "High", className: "text-rose-400" };
-    if (loadLevel === "medium") return { label: "Medium", className: "text-amber-300" };
-    return { label: "Low", className: "text-green-400" };
-  }, [loadLevel]);
+  const ramIndicator = useMemo(() => {
+    const level = (ramStats?.level || "").toLowerCase();
+    if (level === "high") return { label: "High", className: "text-rose-400" };
+    if (level === "medium") return { label: "Medium", className: "text-amber-300" };
+    if (level === "low") return { label: "Low", className: "text-green-400" };
+    return { label: "—", className: "text-slate-500" };
+  }, [ramStats]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
@@ -1583,6 +1592,20 @@ export default function App() {
                   </span>
                 </div>
               </div>
+
+              {/* Live RAM indicator (mobile). No ETA here; chat already shows it. */}
+              {loading && ramStats?.rss_mb != null ? (
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className={cn(ramIndicator.className)}>{Icons.circle}</span>
+                    <span className="text-slate-200">RAM</span>
+                    <span className="text-slate-400">{ramStats.rss_mb}MB</span>
+                  </div>
+                  {ramStats?.avail_mb != null ? (
+                    <div className="text-slate-400">Free {ramStats.avail_mb}MB</div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -2081,13 +2104,21 @@ export default function App() {
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1">
                     <span className="text-slate-500">{Icons.bolt}</span>
-                    Load
+                    RAM (live)
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={cn(loadIndicator.className)}>{Icons.circle}</span>
-                    <span className="text-slate-200">{loadIndicator.label}</span>
+                    <span className={cn(ramIndicator.className)}>{Icons.circle}</span>
+                    <span className="text-slate-200">{ramIndicator.label}</span>
                     <span className="text-slate-500">•</span>
-                    <span className="text-slate-400">{Math.round(totalSelectedMB)}MB</span>
+                    <span className="text-slate-400">
+                      {ramStats?.rss_mb != null ? `${ramStats.rss_mb}MB` : "—"}
+                    </span>
+                    {ramStats?.avail_mb != null ? (
+                      <>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-slate-400">Free {ramStats.avail_mb}MB</span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 {loading && (
