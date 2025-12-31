@@ -53,6 +53,59 @@ from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDE
 from app.job_queue import job_queue, JobStatus
 
 
+_ETA_LOCK = Lock()
+_ETA_SEC_PER_MB_EWMA: dict[str, float] = {}
+
+
+def _default_sec_per_mb(operation_type: str) -> float:
+    op = (operation_type or "").lower()
+    if op in ("compress", "compress_to_target"):
+        return 22.0
+    if op in ("ocr", "ocr_pdf"):
+        return 40.0
+    if op in ("merge", "split", "rotate", "delete_pages", "keep_pages", "extract_pages"):
+        return 6.0
+    return 10.0
+
+
+def _default_overhead_seconds(operation_type: str) -> float:
+    op = (operation_type or "").lower()
+    if op in ("compress", "compress_to_target"):
+        return 20.0
+    if op in ("ocr", "ocr_pdf"):
+        return 25.0
+    return 12.0
+
+
+def _sec_per_mb(operation_type: str) -> float:
+    op = (operation_type or "").lower()
+    with _ETA_LOCK:
+        v = _ETA_SEC_PER_MB_EWMA.get(op)
+    return float(v) if v is not None else _default_sec_per_mb(op)
+
+
+def _eta_expected_total_seconds(operation_type: str, input_total_mb: float | None) -> float | None:
+    if not operation_type:
+        return None
+    if input_total_mb is None:
+        return None
+    mb = max(0.25, float(input_total_mb))
+    return _default_overhead_seconds(operation_type) + _sec_per_mb(operation_type) * mb
+
+
+def _eta_update_stats(operation_type: str, input_total_mb: float | None, actual_seconds: float):
+    if not operation_type or input_total_mb is None:
+        return
+    mb = max(0.25, float(input_total_mb))
+    op = (operation_type or "").lower()
+    overhead = _default_overhead_seconds(op)
+    sec_per_mb_obs = max(1.0, (float(actual_seconds) - overhead) / mb)
+    alpha = 0.25
+    with _ETA_LOCK:
+        prev = _ETA_SEC_PER_MB_EWMA.get(op)
+        _ETA_SEC_PER_MB_EWMA[op] = sec_per_mb_obs if prev is None else (alpha * sec_per_mb_obs + (1 - alpha) * prev)
+
+
 def _memory_snapshot() -> dict:
     """Best-effort live memory snapshot.
 
@@ -1017,8 +1070,24 @@ def process_job_background(job_id: str):
                 print(f"[JOB {job_id}] {message}")
                 operation_name = "multi"
             else:
+                # Compute input size once for ETA (cheap and avoids optimistic ETA based on coarse progress)
+                input_total_bytes = 0
+                for fn in (file_names or []):
+                    try:
+                        fp = get_upload_path(fn)
+                        if fp and os.path.exists(fp):
+                            input_total_bytes += os.path.getsize(fp)
+                    except Exception:
+                        pass
+                input_total_mb = round(input_total_bytes / (1024 * 1024), 2) if input_total_bytes else None
+
+                job_queue.set_operation_context(job_id, intent.operation_type, input_total_mb)
                 job_queue.update_progress(job_id, 60, f"Running {intent.operation_type}...")
+
+                op_started = time.time()
                 output_file, message = execute_operation(intent)
+                op_elapsed = time.time() - op_started
+                _eta_update_stats(intent.operation_type, input_total_mb, op_elapsed)
                 print(f"[JOB {job_id}] {message}")
                 operation_name = intent.operation_type
         except Exception as e:
@@ -1327,19 +1396,36 @@ async def get_job_status(job_id: str):
     }
     
     # Calculate dynamic estimated time remaining
+    # Progress is coarse for some long operations (e.g., compression), so prefer
+    # operation-context ETA when available and keep it conservative.
+    estimated_remaining = 0.0
     if job.started_at and job.progress > 0 and job.status == JobStatus.PROCESSING:
         elapsed = time.time() - job.started_at
-        # Estimate total time based on current progress
-        if job.progress < 100:
+
+        progress_based = 0.0
+        if 0 < job.progress < 100:
             estimated_total = elapsed / (job.progress / 100)
-            estimated_remaining = max(0, estimated_total - elapsed)
-            response["estimated_remaining"] = round(estimated_remaining)
-        else:
-            response["estimated_remaining"] = 0
+            progress_based = max(0.0, estimated_total - elapsed)
+
+        op_based = 0.0
+        if job.current_operation and job.operation_started_at and job.input_total_mb is not None:
+            expected_total = _eta_expected_total_seconds(job.current_operation, job.input_total_mb)
+            if expected_total is not None:
+                op_elapsed = time.time() - job.operation_started_at
+                op_based = max(0.0, expected_total - op_elapsed)
+
+        # Conservative: choose the larger estimate to avoid optimistic ETAs.
+        estimated_remaining = max(progress_based, op_based)
+
+        # If we are processing but have no good signal yet, avoid tiny ETAs.
+        if estimated_remaining <= 0.0:
+            estimated_remaining = 8.0
     elif job.status == JobStatus.PENDING:
-        response["estimated_remaining"] = 30  # Default estimate for pending
+        estimated_remaining = 30.0
     else:
-        response["estimated_remaining"] = 0
+        estimated_remaining = 0.0
+
+    response["estimated_remaining"] = int(round(max(0.0, estimated_remaining)))
     
     if job.completed_at:
         response["completed_at"] = job.completed_at

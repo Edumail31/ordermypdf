@@ -40,6 +40,11 @@ class JobInfo:
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
+
+    # Operation context (for realtime ETA)
+    current_operation: Optional[str] = None
+    operation_started_at: Optional[float] = None
+    input_total_mb: Optional[float] = None
     
     # Input data
     files: list[str] = field(default_factory=list)
@@ -114,6 +119,16 @@ class JobQueue:
             if job and job.status == JobStatus.PROCESSING:
                 job.progress = min(100, max(0, progress))
                 job.progress_message = message
+
+    def set_operation_context(self, job_id: str, operation_type: Optional[str], input_total_mb: Optional[float]):
+        """Set current operation context used to compute realtime ETA."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.status != JobStatus.PROCESSING:
+                return
+            job.current_operation = operation_type
+            job.operation_started_at = time.time() if operation_type else None
+            job.input_total_mb = input_total_mb
     
     def cancel_job(self, job_id: str) -> bool:
         """Cancel a job if it's still pending"""
@@ -208,6 +223,9 @@ class JobQueue:
                 job.result_operation = operation
                 job.result_output_file = output_file
                 job.result_options = options
+                job.current_operation = None
+                job.operation_started_at = None
+                job.input_total_mb = None
     
     def fail_job(self, job_id: str, error_message: str):
         """Mark a job as failed"""
