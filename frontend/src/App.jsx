@@ -1521,8 +1521,11 @@ export default function App() {
   }, [ramStats]);
 
   const ramPillText = useMemo(() => {
-    if (ramStats?.rss_mb == null) return null;
-    return `RAM ${ramStats.rss_mb}MB`;
+    if (!ramStats) return null;
+    const mb = ramStats.rss_mb || ramStats.peak_rss_mb || null;
+    if (mb == null) return null;
+    console.log("[RAM] Pill showing:", mb);
+    return `RAM ${mb}MB`;
   }, [ramStats]);
 
   return (
@@ -1611,11 +1614,11 @@ export default function App() {
               </div>
 
               {/* Live RAM indicator (mobile). No ETA here; chat already shows it. */}
-              {loading && ramStats?.rss_mb != null ? (
+              {loading && ramStats && (ramStats.rss_mb || ramStats.peak_rss_mb) ? (
                 <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-300">
                   <span className={cn(ramIndicator.className)}>{Icons.circle}</span>
                   <span className="text-slate-200">RAM</span>
-                  <span className="text-slate-400">{ramStats.rss_mb}MB</span>
+                  <span className="text-slate-400">{(ramStats.rss_mb || ramStats.peak_rss_mb)}MB</span>
                 </div>
               ) : null}
             </div>
@@ -2131,7 +2134,7 @@ export default function App() {
                     <span className="text-slate-200">{ramIndicator.label}</span>
                     <span className="text-slate-500">•</span>
                     <span className="text-slate-400">
-                      {ramStats?.rss_mb != null ? `${ramStats.rss_mb}MB` : "—"}
+                      {ramStats ? `${ramStats.rss_mb || ramStats.peak_rss_mb || "—"}MB` : "—"}
                     </span>
                   </div>
                 </div>
