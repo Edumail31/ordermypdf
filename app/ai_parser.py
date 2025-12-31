@@ -153,7 +153,8 @@ Examples of CLEAR requests:
 - "merge all files"
 
 FORMAT-ONLY SHORTCUTS (common user replies):
-- If the entire user prompt is one of: png/jpg/jpeg, interpret as PDF_TO_IMAGES with that format.
+- If the entire user prompt is one of: png/jpg/jpeg/img, or "to img"/"to image"/"to images", interpret as PDF_TO_IMAGES with png format (use jpg only if explicitly requested).
+- If the file is already an image (png/jpg/jpeg), and user says "to img" or similar, use IMAGES_TO_PDF to convert the image to PDF.
 - If the entire user prompt is docx/word, interpret as PDF_TO_DOCX.
 - If the entire user prompt is txt, interpret as EXTRACT_TEXT.
 - If the entire user prompt is ocr, interpret as OCR.
@@ -504,6 +505,7 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
         r'\brot\b': 'rotate',
         r'\bzip\b': 'compress as small as possible',
         r'\btxt\b': 'extract text',
+        r'\bimg\b': 'export as png images',
         r'\bpng\b': 'export as png images',
         r'\bjpg\b': 'export as jpg images',
         r'\bdocx?\b': 'convert to docx',
@@ -514,7 +516,7 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
     }
     for pattern, replacement in shorthand_map.items():
       # Avoid duplicating expansions when user already wrote the full phrase.
-      if pattern in {r'\bpng\b', r'\bjpg\b'} and ("export" in p or "image" in p or "images" in p):
+      if pattern in {r'\bpng\b', r'\bjpg\b', r'\bimg\b'} and ("export" in p or "image" in p or "images" in p):
         continue
       if pattern == r'\btxt\b' and ("extract" in p and "text" in p):
         continue

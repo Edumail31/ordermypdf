@@ -105,9 +105,9 @@ def _rephrase_with_context(user_prompt: str, last_intent: Union['ParsedIntent', 
     if prompt_lower in ('to pdf', 'as pdf', 'pdf'):
         return f"convert the result to pdf"
     
-    # "to png/jpg" → "convert to images"
-    if prompt_lower in ('to png', 'as png', 'png', 'to jpg', 'to jpeg', 'as jpg', 'jpg', 'jpeg'):
-        fmt = 'png' if 'png' in prompt_lower else 'jpg'
+    # "to png/jpg/img" → "convert to images"
+    if prompt_lower in ('to png', 'as png', 'png', 'to jpg', 'to jpeg', 'as jpg', 'jpg', 'jpeg', 'img', 'to img', 'to image', 'to images'):
+        fmt = 'jpg' if 'jpg' in prompt_lower or 'jpeg' in prompt_lower else 'png'
         return f"convert the result to {fmt} images"
     
     # "compress" / "smaller" / "make smaller" after prior operation
@@ -837,6 +837,1005 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
     if _is_explicitly_unsupported_request(prompt_for_match):
         return ClarificationResult(clarification=UNSUPPORTED_REPLY)
 
+    # ============================================
+    # HARDCODED REDUNDANCY & COMPATIBILITY GUARDS
+    # Per spec: Never throw generic errors. Skip, auto-fix, or block with clear message.
+    # Smart behavior: Convert valid cross-type operations automatically.
+    # ============================================
+    if file_names:
+        primary = file_names[0]
+        primary_lower = (primary or "").lower()
+        is_image_file = primary_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'))
+        is_pdf_file = primary_lower.endswith('.pdf')
+        is_docx_file = primary_lower.endswith('.docx')
+        all_images = all(f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')) for f in file_names)
+        all_pdfs = all(f.lower().endswith('.pdf') for f in file_names)
+        num_files = len(file_names)
+        
+        # Detect user intent from prompt
+        wants_to_image = bool(re.search(r"\b(to\s*img|to\s*image|to\s*images|to\s*png|to\s*jpe?g|as\s*png|as\s*jpe?g|export\s*(as\s*)?(png|jpe?g|images?))\b", prompt_compact))
+        wants_to_pdf = bool(re.search(r"\b(to\s*pdf|as\s*pdf|convert\s*(to\s*)?pdf)\b", prompt_compact))
+        wants_to_docx = bool(re.search(r"\b(to\s*docx|to\s*word|as\s*docx|as\s*word|convert\s*(to\s*)?(docx|word))\b", prompt_compact))
+        wants_split = bool(re.search(r"\b(split|extract\s*page|keep\s*page)\b", prompt_compact))
+        wants_delete_pages = bool(re.search(r"\b(delete\s*page|remove\s*page)\b", prompt_compact))
+        wants_merge = bool(re.search(r"\b(merge|combine|join)\b", prompt_compact))
+        wants_ocr = bool(re.search(r"\bocr\b", prompt_compact))
+        wants_reorder = bool(re.search(r"\b(reorder|reverse|swap)\b", prompt_compact))
+        wants_clean = bool(re.search(r"\b(clean|remove\s*(blank|duplicate)|blank\s*page|duplicate\s*page)\b", prompt_compact))
+        wants_compress = bool(re.search(r"\b(compress|smaller|shrink|reduce\s*size|make\s*small|tiny)\b", prompt_compact))
+        wants_rotate = bool(re.search(r"\b(rotate|turn|flip|straighten)\b", prompt_compact))
+        wants_watermark = bool(re.search(r"\bwatermark\b", prompt_compact))
+        wants_page_numbers = bool(re.search(r"\b(page\s*numbers?|number\s*pages?|add\s*numbers?)\b", prompt_compact))
+        wants_enhance = bool(re.search(r"\b(enhance|improve|clarify|sharpen|clean\s*up|fix\s*scan)\b", prompt_compact))
+        wants_flatten = bool(re.search(r"\b(flatten|sanitize|optimize)\b", prompt_compact))
+        wants_extract_text = bool(re.search(r"\b(extract\s*text|to\s*txt|as\s*txt|text\s*only|get\s*text)\b", prompt_compact))
+        
+        # ========== MULTI-OPERATION COMBO DETECTION ==========
+        # Detect when user wants multiple operations at once
+        num_operations = sum([
+            wants_merge, wants_split, wants_delete_pages, wants_compress, wants_rotate,
+            wants_watermark, wants_page_numbers, wants_ocr, wants_enhance, wants_flatten,
+            wants_clean, wants_reorder, wants_to_image, wants_to_docx, wants_extract_text
+        ])
+        
+        # ========== PDF MULTI-OP PIPELINES ==========
+        if is_pdf_file or all_pdfs:
+            
+            # PDF + merge + compress → Merge all → Compress
+            if wants_merge and wants_compress and all_pdfs and num_files >= 2:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="merge",
+                            merge={"operation": "merge", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + merge + watermark → Merge → Watermark
+            if wants_merge and wants_watermark and all_pdfs and num_files >= 2:
+                m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
+                text = (m.group(1).strip() if m else "").strip("\"'")
+                if text:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="merge",
+                                merge={"operation": "merge", "files": file_names},
+                            ),
+                            ParsedIntent(
+                                operation_type="watermark",
+                                watermark={"operation": "watermark", "file": primary, "text": text},
+                            ),
+                        ]
+                    )
+            
+            # PDF + OCR + compress → OCR → Compress
+            if wants_ocr and wants_compress and is_pdf_file:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="ocr",
+                            ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + enhance + OCR → Enhance → OCR
+            if wants_enhance and wants_ocr and is_pdf_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="ocr",
+                            ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                        ),
+                    ]
+                )
+            
+            # PDF + enhance + compress → Enhance → Compress
+            if wants_enhance and wants_compress and is_pdf_file:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + rotate + compress → Rotate → Compress
+            if wants_rotate and wants_compress and is_pdf_file:
+                degrees = 90
+                if re.search(r"\b(left|counter|anti)\b", prompt_compact):
+                    degrees = 270
+                elif re.search(r"\b180\b", prompt_compact):
+                    degrees = 180
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="rotate",
+                            rotate={"operation": "rotate", "file": primary, "degrees": degrees, "pages": None},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + flatten + compress → Flatten → Compress
+            if wants_flatten and wants_compress and is_pdf_file:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="flatten_pdf",
+                            flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + clean + compress → Clean → Compress
+            if wants_clean and wants_compress and is_pdf_file:
+                is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
+                op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type=op_type,
+                            **{op_type: {"operation": op_type, "file": primary}},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + watermark + compress → Watermark → Compress
+            if wants_watermark and wants_compress and is_pdf_file:
+                m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
+                text = (m.group(1).strip() if m else "").strip("\"'")
+                if text:
+                    preset = _infer_compress_preset(user_prompt)
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="watermark",
+                                watermark={"operation": "watermark", "file": primary, "text": text},
+                            ),
+                            ParsedIntent(
+                                operation_type="compress",
+                                compress={"operation": "compress", "file": primary, "preset": preset},
+                            ),
+                        ]
+                    )
+            
+            # PDF + page numbers + compress → Page numbers → Compress
+            if wants_page_numbers and wants_compress and is_pdf_file:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="page_numbers",
+                            page_numbers={"operation": "page_numbers", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # PDF + split + compress → Split → Compress
+            if wants_split and wants_compress and is_pdf_file:
+                pages = _parse_page_ranges(user_prompt)
+                if pages:
+                    preset = _infer_compress_preset(user_prompt)
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="split",
+                                split={"operation": "split", "file": primary, "pages": pages},
+                            ),
+                            ParsedIntent(
+                                operation_type="compress",
+                                compress={"operation": "compress", "file": primary, "preset": preset},
+                            ),
+                        ]
+                    )
+            
+            # PDF + watermark + page numbers → Watermark → Page numbers
+            if wants_watermark and wants_page_numbers and is_pdf_file:
+                m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
+                text = (m.group(1).strip() if m else "").strip("\"'")
+                if text:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="watermark",
+                                watermark={"operation": "watermark", "file": primary, "text": text},
+                            ),
+                            ParsedIntent(
+                                operation_type="page_numbers",
+                                page_numbers={"operation": "page_numbers", "file": primary},
+                            ),
+                        ]
+                    )
+            
+            # PDF + rotate + split → Rotate → Split
+            if wants_rotate and wants_split and is_pdf_file:
+                pages = _parse_page_ranges(user_prompt)
+                degrees = 90
+                if re.search(r"\b(left|counter|anti)\b", prompt_compact):
+                    degrees = 270
+                elif re.search(r"\b180\b", prompt_compact):
+                    degrees = 180
+                if pages:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="rotate",
+                                rotate={"operation": "rotate", "file": primary, "degrees": degrees, "pages": None},
+                            ),
+                            ParsedIntent(
+                                operation_type="split",
+                                split={"operation": "split", "file": primary, "pages": pages},
+                            ),
+                        ]
+                    )
+        
+        # ========== IMAGE MULTI-OP PIPELINES ==========
+        if is_image_file or all_images:
+            
+            # Images + merge/combine + compress → Images to PDF → Compress
+            if (wants_merge or wants_to_pdf) and wants_compress and all_images:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # Images + combine + watermark → Images to PDF → Watermark
+            if (wants_merge or wants_to_pdf) and wants_watermark and all_images:
+                m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
+                text = (m.group(1).strip() if m else "").strip("\"'")
+                if text:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="images_to_pdf",
+                                images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                            ),
+                            ParsedIntent(
+                                operation_type="watermark",
+                                watermark={"operation": "watermark", "file": primary, "text": text},
+                            ),
+                        ]
+                    )
+            
+            # Images + combine + page numbers → Images to PDF → Page numbers
+            if (wants_merge or wants_to_pdf) and wants_page_numbers and all_images:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="page_numbers",
+                            page_numbers={"operation": "page_numbers", "file": primary},
+                        ),
+                    ]
+                )
+            
+            # Image + enhance + OCR → Enhance → OCR
+            if wants_enhance and wants_ocr and is_image_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="ocr",
+                            ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                        ),
+                    ]
+                )
+            
+            # Image + enhance + to PDF → Enhance → Images to PDF
+            if wants_enhance and wants_to_pdf and is_image_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                    ]
+                )
+            
+            # Image + enhance + compress → Enhance → to PDF → Compress
+            if wants_enhance and wants_compress and is_image_file:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # Multiple images + combine + rotate → Images to PDF → Rotate
+            if (wants_merge or wants_to_pdf) and wants_rotate and all_images:
+                degrees = 90
+                if re.search(r"\b(left|counter|anti)\b", prompt_compact):
+                    degrees = 270
+                elif re.search(r"\b180\b", prompt_compact):
+                    degrees = 180
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="rotate",
+                            rotate={"operation": "rotate", "file": primary, "degrees": degrees, "pages": None},
+                        ),
+                    ]
+                )
+        
+        # ========== DOCX MULTI-OP PIPELINES ==========
+        if is_docx_file:
+            
+            # DOCX + to PDF + compress → DOCX to PDF → Compress
+            if wants_to_pdf and wants_compress:
+                preset = _infer_compress_preset(user_prompt)
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": preset},
+                        ),
+                    ]
+                )
+            
+            # DOCX + to PDF + watermark → DOCX to PDF → Watermark
+            if wants_to_pdf and wants_watermark:
+                m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
+                text = (m.group(1).strip() if m else "").strip("\"'")
+                if text:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="docx_to_pdf",
+                                docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                            ),
+                            ParsedIntent(
+                                operation_type="watermark",
+                                watermark={"operation": "watermark", "file": primary, "text": text},
+                            ),
+                        ]
+                    )
+            
+            # DOCX + to PDF + page numbers → DOCX to PDF → Page numbers
+            if wants_to_pdf and wants_page_numbers:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="page_numbers",
+                            page_numbers={"operation": "page_numbers", "file": primary},
+                        ),
+                    ]
+                )
+            
+            # DOCX + to images + compress (3-step) → DOCX→PDF→Images (can't compress images in zip)
+            # Just do the conversion
+            if wants_to_image and wants_compress:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="pdf_to_images",
+                            pdf_to_images={"operation": "pdf_to_images", "file": primary, "format": "jpg", "dpi": 100},
+                        ),
+                    ]
+                )
+            
+            # DOCX + delete pages → DOCX to PDF → Delete
+            if wants_delete_pages:
+                pages = _parse_page_ranges(user_prompt)
+                if pages:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="docx_to_pdf",
+                                docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                            ),
+                            ParsedIntent(
+                                operation_type="delete",
+                                delete={"operation": "delete", "file": primary, "pages_to_delete": pages},
+                            ),
+                        ]
+                    )
+                else:
+                    return ClarificationResult(
+                        clarification="Which pages do you want to delete? (Will convert to PDF first)",
+                        options=["delete page 1", "delete pages 2-3", "delete last page"]
+                    )
+        
+        # ========== REDUNDANCY GUARDS (skip if already that format) ==========
+        
+        # Image → to image (same format): Already an image
+        if is_image_file and wants_to_image and not wants_to_pdf and not wants_compress:
+            return ClarificationResult(clarification="Already an image")
+        
+        # PDF → to pdf (without any other operation): Already a PDF
+        if is_pdf_file and wants_to_pdf and num_operations <= 1:
+            return ClarificationResult(clarification="Already a PDF")
+        
+        # DOCX → to docx: Already a Word document
+        if is_docx_file and wants_to_docx:
+            return ClarificationResult(clarification="Already a Word document")
+        
+        # ========== AUTO-FIX: Smart cross-type conversions ==========
+        
+        # Images + merge → auto-convert to images_to_pdf (combine images into PDF)
+        if wants_merge and all_images and num_files >= 1:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="images_to_pdf",
+                    images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                )
+            )
+        
+        # Single/multiple images + "to pdf" → images_to_pdf
+        if wants_to_pdf and all_images:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="images_to_pdf",
+                    images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                )
+            )
+        
+        # DOCX + "to pdf" → docx_to_pdf
+        if wants_to_pdf and is_docx_file:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="docx_to_pdf",
+                    docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                )
+            )
+        
+        # Image + OCR → valid! OCR works on images (extract text from image)
+        if wants_ocr and is_image_file:
+            # Convert image to PDF first, then OCR - or just process directly
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="ocr",
+                    ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                )
+            )
+        
+        # Image + extract text → use OCR
+        if wants_extract_text and is_image_file:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="ocr",
+                    ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                )
+            )
+        
+        # Image + enhance → valid! Enhance scanned image
+        if wants_enhance and is_image_file:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="enhance_scan",
+                    enhance_scan={"operation": "enhance_scan", "file": primary},
+                )
+            )
+        
+        # ========== AUTO MULTI-STEP OPERATIONS ==========
+        # Instead of telling user "convert first, then...", just DO IT!
+        
+        # DOCX + to image → DOCX→PDF→Images (2 steps, auto)
+        if wants_to_image and is_docx_file:
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="docx_to_pdf",
+                        docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                    ),
+                    ParsedIntent(
+                        operation_type="pdf_to_images",
+                        pdf_to_images={"operation": "pdf_to_images", "file": primary, "format": "png", "dpi": 150},
+                    ),
+                ]
+            )
+        
+        # DOCX + split → DOCX→PDF→Split (need pages)
+        if wants_split and is_docx_file:
+            pages = _parse_page_ranges(user_prompt)
+            if pages:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="split",
+                            split={"operation": "split", "file": primary, "pages": pages},
+                        ),
+                    ]
+                )
+            else:
+                return ClarificationResult(
+                    clarification="Which pages do you want after converting to PDF?",
+                    options=["pages 1", "pages 1-3", "all pages as separate PDFs"]
+                )
+        
+        # DOCX + compress → DOCX→PDF→Compress (auto)
+        if wants_compress and is_docx_file:
+            preset = _infer_compress_preset(user_prompt)
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="docx_to_pdf",
+                        docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                    ),
+                    ParsedIntent(
+                        operation_type="compress",
+                        compress={"operation": "compress", "file": primary, "preset": preset},
+                    ),
+                ]
+            )
+        
+        # DOCX + watermark → DOCX→PDF→Watermark (need text)
+        if wants_watermark and is_docx_file:
+            m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(.+)$", user_prompt, re.IGNORECASE)
+            text = (m.group(1).strip() if m else "").strip("\"'")
+            if text:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="watermark",
+                            watermark={"operation": "watermark", "file": primary, "text": text},
+                        ),
+                    ]
+                )
+            else:
+                return ClarificationResult(
+                    clarification="What watermark text? (Will convert DOCX to PDF first)",
+                    options=["watermark CONFIDENTIAL", "watermark DRAFT"]
+                )
+        
+        # DOCX + page numbers → DOCX→PDF→Page numbers (auto)
+        if wants_page_numbers and is_docx_file:
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="docx_to_pdf",
+                        docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                    ),
+                    ParsedIntent(
+                        operation_type="page_numbers",
+                        page_numbers={"operation": "page_numbers", "file": primary},
+                    ),
+                ]
+            )
+        
+        # DOCX + reorder → DOCX→PDF→Reorder (need order)
+        if wants_reorder and is_docx_file:
+            m = re.search(r"\b(?:to|as)\b\s*([0-9,\s]+)", user_prompt, re.IGNORECASE)
+            is_reverse = bool(re.search(r"\breverse\b", prompt_compact))
+            if is_reverse:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="reorder",
+                            reorder={"operation": "reorder", "file": primary, "new_order": "reverse"},
+                        ),
+                    ]
+                )
+            elif m:
+                order = [int(x) for x in re.findall(r"\d+", m.group(1))]
+                if order:
+                    return ClarificationResult(
+                        intent=[
+                            ParsedIntent(
+                                operation_type="docx_to_pdf",
+                                docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                            ),
+                            ParsedIntent(
+                                operation_type="reorder",
+                                reorder={"operation": "reorder", "file": primary, "new_order": order},
+                            ),
+                        ]
+                    )
+            return ClarificationResult(
+                clarification="What page order after converting to PDF? (example: 2,1,3)",
+                options=["reverse all pages", "reorder to 2,1,3"]
+            )
+        
+        # DOCX + flatten → DOCX→PDF→Flatten (auto)
+        if wants_flatten and is_docx_file:
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="docx_to_pdf",
+                        docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                    ),
+                    ParsedIntent(
+                        operation_type="flatten_pdf",
+                        flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                    ),
+                ]
+            )
+        
+        # DOCX + clean → DOCX→PDF→Clean (auto)
+        if wants_clean and is_docx_file:
+            is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
+            op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="docx_to_pdf",
+                        docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                    ),
+                    ParsedIntent(
+                        operation_type=op_type,
+                        **{op_type: {"operation": op_type, "file": primary}},
+                    ),
+                ]
+            )
+        
+        # Image + watermark → Image→PDF→Watermark
+        if wants_watermark and is_image_file:
+            m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(.+)$", user_prompt, re.IGNORECASE)
+            text = (m.group(1).strip() if m else "").strip("\"'")
+            if text:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="watermark",
+                            watermark={"operation": "watermark", "file": primary, "text": text},
+                        ),
+                    ]
+                )
+            else:
+                return ClarificationResult(
+                    clarification="What watermark text? (Will convert image to PDF first)",
+                    options=["watermark CONFIDENTIAL", "watermark DRAFT"]
+                )
+        
+        # Image + page numbers → Image→PDF→Page numbers
+        if wants_page_numbers and is_image_file:
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                    ),
+                    ParsedIntent(
+                        operation_type="page_numbers",
+                        page_numbers={"operation": "page_numbers", "file": primary},
+                    ),
+                ]
+            )
+        
+        # Image + compress → Image→PDF→Compress
+        if wants_compress and is_image_file:
+            preset = _infer_compress_preset(user_prompt)
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                    ),
+                    ParsedIntent(
+                        operation_type="compress",
+                        compress={"operation": "compress", "file": primary, "preset": preset},
+                    ),
+                ]
+            )
+        
+        # Image + rotate → Image→PDF→Rotate
+        if wants_rotate and is_image_file:
+            degrees = 90  # default
+            if re.search(r"\b(left|counter|anti)\b", prompt_compact):
+                degrees = 270
+            elif re.search(r"\b180\b", prompt_compact):
+                degrees = 180
+            elif re.search(r"\b270\b", prompt_compact):
+                degrees = 270
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                    ),
+                    ParsedIntent(
+                        operation_type="rotate",
+                        rotate={"operation": "rotate", "file": primary, "degrees": degrees, "pages": None},
+                    ),
+                ]
+            )
+        
+        # Image + flatten → Image→PDF→Flatten
+        if wants_flatten and is_image_file:
+            return ClarificationResult(
+                intent=[
+                    ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                    ),
+                    ParsedIntent(
+                        operation_type="flatten_pdf",
+                        flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                    ),
+                ]
+            )
+        
+        # Multiple images + reorder → combine into PDF with specific order
+        if wants_reorder and all_images and num_files > 1:
+            is_reverse = bool(re.search(r"\breverse\b", prompt_compact))
+            if is_reverse:
+                # Reverse the file order and combine
+                reversed_files = list(reversed(file_names))
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": reversed_files},
+                    )
+                )
+            return ClarificationResult(
+                clarification="What order should the images be combined into PDF? (example: 2,1,3)",
+                options=["combine as uploaded order", "reverse order"]
+            )
+        
+        # ========== NATURAL LANGUAGE SHORTCUTS ==========
+        # Handle common phrases users say without being explicit
+        
+        # "email ready" / "send by email" → compress for email
+        wants_email_ready = bool(re.search(r"\b(email\s*ready|for\s*email|send\s*(by\s*)?email|email\s*size)\b", prompt_compact))
+        if wants_email_ready:
+            if is_pdf_file:
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="compress",
+                        compress={"operation": "compress", "file": primary, "preset": "strong"},
+                    )
+                )
+            elif is_docx_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": "strong"},
+                        ),
+                    ]
+                )
+            elif is_image_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="images_to_pdf",
+                            images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                        ),
+                        ParsedIntent(
+                            operation_type="compress",
+                            compress={"operation": "compress", "file": primary, "preset": "strong"},
+                        ),
+                    ]
+                )
+        
+        # "fix this scan" / "fix scanned" → enhance + OCR
+        wants_fix_scan = bool(re.search(r"\b(fix\s*(this\s*)?scan|fix\s*scanned|clean\s*scan)\b", prompt_compact))
+        if wants_fix_scan:
+            if is_pdf_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="ocr",
+                            ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                        ),
+                    ]
+                )
+            elif is_image_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="enhance_scan",
+                            enhance_scan={"operation": "enhance_scan", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="ocr",
+                            ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                        ),
+                    ]
+                )
+        
+        # "print ready" / "for printing" → flatten (remove fillable elements)
+        wants_print_ready = bool(re.search(r"\b(print\s*ready|for\s*print|printing)\b", prompt_compact))
+        if wants_print_ready:
+            if is_pdf_file:
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="flatten_pdf",
+                        flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                    )
+                )
+            elif is_docx_file:
+                return ClarificationResult(
+                    intent=[
+                        ParsedIntent(
+                            operation_type="docx_to_pdf",
+                            docx_to_pdf={"operation": "docx_to_pdf", "file": primary},
+                        ),
+                        ParsedIntent(
+                            operation_type="flatten_pdf",
+                            flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                        ),
+                    ]
+                )
+            elif is_image_file:
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="images_to_pdf",
+                        images_to_pdf={"operation": "images_to_pdf", "files": file_names},
+                    )
+                )
+        
+        # "make searchable" → OCR
+        wants_searchable = bool(re.search(r"\b(make\s*searchable|searchable\s*pdf|text\s*searchable)\b", prompt_compact))
+        if wants_searchable:
+            if is_pdf_file or is_image_file:
+                return ClarificationResult(
+                    intent=ParsedIntent(
+                        operation_type="ocr",
+                        ocr={"operation": "ocr", "file": primary, "language": "eng", "deskew": True},
+                    )
+                )
+        
+        # "secure pdf" / "protect pdf" → flatten (removes editable content)
+        wants_secure = bool(re.search(r"\b(secure|protect|sanitize)\s*pdf\b", prompt_compact))
+        if wants_secure and is_pdf_file:
+            return ClarificationResult(
+                intent=ParsedIntent(
+                    operation_type="flatten_pdf",
+                    flatten_pdf={"operation": "flatten_pdf", "file": primary},
+                )
+            )
+        
+        # ========== TRULY INCOMPATIBLE (no workaround) ==========
+        
+        # Split single image: Images don't have pages
+        if wants_split and is_image_file:
+            return ClarificationResult(clarification="Images don't have pages to split. Upload a multi-page PDF instead.")
+        
+        # OCR: DOCX is already text-based
+        if wants_ocr and is_docx_file:
+            return ClarificationResult(clarification="DOCX is already text-based — no OCR needed!")
+        
+        # Reorder single image: Need multiple files or multi-page PDF
+        if wants_reorder and is_image_file and num_files == 1:
+            return ClarificationResult(clarification="Upload multiple images to reorder and combine into PDF")
+        
+        # Clean single image: Need multi-page document
+        if wants_clean and is_image_file:
+            return ClarificationResult(clarification="Upload a multi-page PDF to remove blank/duplicate pages")
+        
+        # Mixed file types in merge
+        if wants_merge and not all_pdfs and not all_images and num_files > 1:
+            return ClarificationResult(clarification="Upload either all PDFs or all images to merge")
+        
+        # Extract text from DOCX: Already text
+        if wants_extract_text and is_docx_file:
+            return ClarificationResult(clarification="DOCX is already a text document — just open it!")
+        
+        # Enhance DOCX: Not applicable
+        if wants_enhance and is_docx_file:
+            return ClarificationResult(clarification="Enhance is for scanned documents. DOCX is already clear text.")
+        
+        # Single file + merge: Need at least 2 files
+        if wants_merge and num_files == 1:
+            if is_pdf_file:
+                return ClarificationResult(clarification="Upload at least 2 PDFs to merge")
+            if is_image_file:
+                return ClarificationResult(clarification="Upload more images to combine, or just say 'to pdf'")
+            if is_docx_file:
+                return ClarificationResult(clarification="Upload multiple files to merge")
+        
+        # Image to DOCX → suggest OCR
+        if wants_to_docx and is_image_file:
+            return ClarificationResult(
+                clarification="To extract text from image, try 'OCR' which creates a searchable PDF with embedded text",
+                options=["OCR this image"]
+            )
+
+    # ============================================
+    # END HARDCODED GUARDS
+    # ============================================
+
     # Deterministic convert shortcuts for common ambiguous phrasing.
     # These improve reliability (and reduce LLM calls) for corpus-style commands.
     if file_names:
@@ -845,7 +1844,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         wants_convert = bool(re.search(r"\b(convert|change)\b", prompt_for_match, re.IGNORECASE))
         wants_word = bool(re.search(r"\b(word|docx|doc)\b", prompt_for_match, re.IGNORECASE))
         wants_pdf = bool(re.search(r"\bpdf\b", prompt_for_match, re.IGNORECASE))
-        wants_images = bool(re.search(r"\b(images?|png|jpe?g)\b", prompt_for_match, re.IGNORECASE))
+        wants_images = bool(re.search(r"\b(images?|img|png|jpe?g)\b", prompt_for_match, re.IGNORECASE))
 
         # DOCX → PDF
         if wants_convert and wants_pdf and primary_lower.endswith(".docx"):
@@ -921,17 +1920,32 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             if order_result is not None:
                 return order_result
 
-    # Format-only prompts (very common): "png", "jpg", "docx", "txt", "ocr"
+    # Format-only prompts (very common): "png", "jpg", "docx", "txt", "ocr", "img"
     # Prefer executing rather than asking "convert to what?".
-    if file_names and prompt_compact in {"png", "jpg", "jpeg"}:
+    # Note: "to img" with image files is caught by redundancy guards above ("Already an image")
+    if file_names and prompt_compact in {"png", "jpg", "jpeg", "img", "to img", "to image", "to images"}:
         file_name = file_names[0]
+        file_lower = file_name.lower()
+        
+        # If the file is already an image, the redundancy guard above catches "to img" cases.
+        # For bare "png"/"jpg"/"img" with image files, also return "Already an image"
+        if file_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')):
+            return ClarificationResult(clarification="Already an image")
+        
+        # Determine output format - default to png for "img"/"to img" etc
+        output_format = "png"
+        if prompt_compact in {"jpg", "jpeg"}:
+            output_format = "jpg"
+        elif prompt_compact == "png":
+            output_format = "png"
+        
         return ClarificationResult(
             intent=ParsedIntent(
                 operation_type="pdf_to_images",
                 pdf_to_images={
                     "operation": "pdf_to_images",
                     "file": file_name,
-                    "format": prompt_compact,
+                    "format": output_format,
                     "dpi": 150,
                 },
             )

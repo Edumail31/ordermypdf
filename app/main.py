@@ -1154,6 +1154,12 @@ async def root():
     }
 
 
+@app.get("/api/ram")
+async def get_ram_stats():
+    """Get current RAM/memory usage stats."""
+    return _memory_snapshot()
+
+
 # Store for pre-uploaded files (upload_id -> list of file names)
 _PREUPLOADS: dict[str, dict] = {}
 _PREUPLOADS_LOCK = Lock()

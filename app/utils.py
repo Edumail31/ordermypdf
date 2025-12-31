@@ -26,7 +26,7 @@ RE_REORDER_OPS = re.compile(r"\breorder\b|\bswap\b", re.IGNORECASE)
 RE_WATERMARK_OPS = re.compile(r"\bwatermark\b", re.IGNORECASE)
 RE_PAGE_NUMBERS_OPS = re.compile(r"\bpage\s*numbers?\b", re.IGNORECASE)
 RE_OCR_OPS = re.compile(r"\bocr\b", re.IGNORECASE)
-RE_IMAGES_OPS = re.compile(r"\bimages?\b|\bpng\b|\bjpg\b|\bjpeg\b", re.IGNORECASE)
+RE_IMAGES_OPS = re.compile(r"\bimages?\b|\bimg\b|\bpng\b|\bjpg\b|\bjpeg\b", re.IGNORECASE)
 
 # Page range detection
 RE_PAGE_WITH_DIGIT = re.compile(r"\bpages?\b\s*\d", re.IGNORECASE)
@@ -107,7 +107,7 @@ def fuzzy_match_keyword(word: str, keywords: list[str], threshold: float = 0.86)
 OPERATION_KEYWORDS = frozenset([
     "compress", "split", "extract", "keep", "merge", "combine", "join",
     "delete", "remove", "convert", "rotate", "reorder", "watermark",
-    "page", "numbers", "images", "image", "ocr"
+    "page", "numbers", "images", "image", "img", "ocr"
 ])
 
 CONNECTOR_KEYWORDS = frozenset([

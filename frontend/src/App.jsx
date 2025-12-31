@@ -647,6 +647,38 @@ export default function App() {
   const [statusIndex, setStatusIndex] = useState(0);
   const [recoveredJob, setRecoveredJob] = useState(null);
 
+  // Fetch RAM stats on mount and periodically when idle
+  useEffect(() => {
+    let interval = null;
+    
+    const fetchRam = async () => {
+      try {
+        const res = await fetch("/api/ram");
+        if (res.ok) {
+          const data = await res.json();
+          console.log("[RAM] Fetched:", data);
+          setRamStats(data);
+        }
+      } catch (e) {
+        console.warn("[RAM] Failed to fetch:", e);
+      }
+    };
+
+    // Initial fetch
+    fetchRam();
+
+    // Poll every 10 seconds when NOT loading (idle state)
+    interval = setInterval(() => {
+      if (!loading) {
+        fetchRam();
+      }
+    }, 10000);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading]);
+
   // Check for pending job on mount (recovery after page refresh)
   useEffect(() => {
     const pending = loadPendingJob();
@@ -745,7 +777,7 @@ export default function App() {
           setRamStats(statusData.ram);
         } else {
           console.warn("[RAM DEBUG] No ram field in statusData");
-          setRamStats(null);
+          // Don't clear ramStats here - periodic fetch will update it
         }
 
         setMessages((prev) => {
@@ -1051,7 +1083,7 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(false);
     setProcessingMessage("");
-    setRamStats(null);
+    // RAM stats will be refreshed by periodic fetch
     showToast("⏹️ Process stopped by user.", 3000);
     setMessages((prev) => [
       ...prev.filter((m, idx) => {
@@ -1094,7 +1126,7 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(true);
     setProcessingMessage("");
-    setRamStats(null);
+    // Keep existing RAM stats - will be updated by job status polling
 
     const rawUserText = rawInput;
     setLastSubmittedPrompt(rawUserText);
@@ -1172,7 +1204,7 @@ export default function App() {
             setRamStats(statusData.ram);
           } else {
             console.warn("[RAM DEBUG resumePending] No ram field in statusData");
-            setRamStats(null);
+            // Don't clear ramStats - periodic fetch will update it
           }
         } catch {
           // ignore
@@ -1378,7 +1410,7 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on completion
-          setRamStats(null);
+          // RAM stats will be refreshed by periodic fetch
 
           // Remove the status bubble
           setMessages((prev) => {
@@ -1449,7 +1481,7 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on cancel
-          setRamStats(null);
+          // RAM stats will be refreshed by periodic fetch
         }
       }
 
