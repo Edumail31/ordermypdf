@@ -2371,15 +2371,15 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         
         # Image → to image (same format): Already an image
         if is_image_file and wants_to_image and not wants_to_pdf and not wants_compress:
-            return ClarificationResult(clarification="Already an image")
+            return ClarificationResult(clarification="This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.")
         
         # PDF → to pdf (without any other operation): Already a PDF
         if is_pdf_file and wants_to_pdf and num_operations <= 1:
-            return ClarificationResult(clarification="Already a PDF")
+            return ClarificationResult(clarification="This file is already a PDF. Try 'compress', 'to docx', or 'to images' instead.")
         
         # DOCX → to docx: Already a Word document
         if is_docx_file and wants_to_docx:
-            return ClarificationResult(clarification="Already a Word document")
+            return ClarificationResult(clarification="This file is already a Word document. Try 'to pdf' to convert it.")
         
         # ========== AUTO-FIX: Smart cross-type conversions ==========
         

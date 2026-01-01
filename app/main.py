@@ -1199,6 +1199,29 @@ def process_job_background(job_id: str):
         # Fix common typos in filenames
         _resolve_intent_filenames(intent, file_names)
         
+        # Calculate max ETA upfront based on file size and operation
+        input_total_bytes = 0
+        for fn in (file_names or []):
+            try:
+                fp = get_upload_path(fn)
+                if fp and os.path.exists(fp):
+                    input_total_bytes += os.path.getsize(fp)
+            except Exception:
+                pass
+        input_total_mb = round(input_total_bytes / (1024 * 1024), 2) if input_total_bytes else 0.5
+        
+        # Set max ETA once - this only goes DOWN, never increases
+        if isinstance(intent, list):
+            # Multi-step: sum up ETAs for each operation
+            total_max_eta = 0.0
+            for step in intent:
+                step_eta = _eta_expected_total_seconds(step.operation_type, input_total_mb) or 30
+                total_max_eta += step_eta
+            job_queue.set_max_eta(job_id, total_max_eta)
+        else:
+            max_eta = _eta_expected_total_seconds(intent.operation_type, input_total_mb) or 30
+            job_queue.set_max_eta(job_id, max_eta)
+        
         job_queue.update_progress(job_id, 40, "Processing your files...")
         
         # Execute the operation(s)
@@ -1213,17 +1236,6 @@ def process_job_background(job_id: str):
                 print(f"[JOB {job_id}] {message}")
                 operation_name = "multi"
             else:
-                # Compute input size once for ETA (cheap and avoids optimistic ETA based on coarse progress)
-                input_total_bytes = 0
-                for fn in (file_names or []):
-                    try:
-                        fp = get_upload_path(fn)
-                        if fp and os.path.exists(fp):
-                            input_total_bytes += os.path.getsize(fp)
-                    except Exception:
-                        pass
-                input_total_mb = round(input_total_bytes / (1024 * 1024), 2) if input_total_bytes else None
-
                 job_queue.set_operation_context(job_id, intent.operation_type, input_total_mb)
                 job_queue.update_progress(job_id, 60, f"Running {intent.operation_type}...")
 
@@ -1545,30 +1557,30 @@ async def get_job_status(job_id: str):
     }
     
     # Calculate dynamic estimated time remaining
-    # Progress is coarse for some long operations (e.g., compression), so prefer
-    # operation-context ETA when available and keep it conservative.
+    # FIXED: ETA now only counts DOWN from maximum, never increases
     estimated_remaining = 0.0
-    if job.started_at and job.progress > 0 and job.status == JobStatus.PROCESSING:
+    if job.started_at and job.status == JobStatus.PROCESSING:
         elapsed = time.time() - job.started_at
-
-        progress_based = 0.0
-        if 0 < job.progress < 100:
-            estimated_total = elapsed / (job.progress / 100)
-            progress_based = max(0.0, estimated_total - elapsed)
-
-        op_based = 0.0
-        if job.current_operation and job.operation_started_at and job.input_total_mb is not None:
+        
+        # If we have a max_eta set, use it as ceiling and count down
+        if job.max_eta_seconds is not None:
+            estimated_remaining = max(0.0, job.max_eta_seconds - elapsed)
+        elif job.current_operation and job.operation_started_at and job.input_total_mb is not None:
+            # Calculate from operation context
             expected_total = _eta_expected_total_seconds(job.current_operation, job.input_total_mb)
             if expected_total is not None:
                 op_elapsed = time.time() - job.operation_started_at
-                op_based = max(0.0, expected_total - op_elapsed)
-
-        # Conservative: choose the larger estimate to avoid optimistic ETAs.
-        estimated_remaining = max(progress_based, op_based)
-
-        # If we are processing but have no good signal yet, avoid tiny ETAs.
-        if estimated_remaining <= 0.0:
-            estimated_remaining = 8.0
+                estimated_remaining = max(0.0, expected_total - op_elapsed)
+        elif job.progress > 0 and job.progress < 100:
+            # Fallback: progress-based but capped
+            estimated_total = elapsed / (job.progress / 100)
+            # Cap at 3 minutes to prevent runaway estimates
+            estimated_total = min(estimated_total, 180)
+            estimated_remaining = max(0.0, estimated_total - elapsed)
+        
+        # Minimum 5 seconds if still processing (avoid showing 0 while active)
+        if estimated_remaining <= 0.0 and job.progress < 100:
+            estimated_remaining = 5.0
     elif job.status == JobStatus.PENDING:
         estimated_remaining = 30.0
     else:

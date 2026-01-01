@@ -46,6 +46,7 @@ class JobInfo:
     current_operation: Optional[str] = None
     operation_started_at: Optional[float] = None
     input_total_mb: Optional[float] = None
+    max_eta_seconds: Optional[float] = None  # Maximum ETA set once at start, only counts down
     
     # Input data
     files: list[str] = field(default_factory=list)
@@ -144,6 +145,13 @@ class JobQueue:
             job.current_operation = operation_type
             job.operation_started_at = time.time() if operation_type else None
             job.input_total_mb = input_total_mb
+    
+    def set_max_eta(self, job_id: str, max_seconds: float):
+        """Set maximum ETA estimate (only set once at start, never increases)"""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job and job.max_eta_seconds is None:
+                job.max_eta_seconds = max_seconds
     
     def cancel_job(self, job_id: str) -> bool:
         """Cancel a job if it's still pending"""

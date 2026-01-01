@@ -181,26 +181,26 @@ class ErrorClassifier:
         Check for redundant operations (e.g., image → to_image, pdf → to_pdf)
         Returns ErrorClassification if redundant, None otherwise.
         """
-        # Skip operations
-        skip_cases = [
-            ("convert_to_image", "jpg"),
-            ("convert_to_image", "png"),
-            ("convert_to_image", "jpeg"),
-            ("convert_to_pdf", "pdf"),
-            ("convert_to_docx", "docx"),
-        ]
+        # Skip operations with helpful messages
+        skip_cases = {
+            ("convert_to_image", "jpg"): "This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.",
+            ("convert_to_image", "png"): "This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.",
+            ("convert_to_image", "jpeg"): "This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.",
+            ("convert_to_pdf", "pdf"): "This file is already a PDF. Try 'compress', 'to docx', or 'to images' instead.",
+            ("convert_to_docx", "docx"): "This file is already a Word document. Try 'to pdf' to convert it.",
+        }
         
-        for op, ftype in skip_cases:
-            if operation == op and file_type.lower() == ftype.lower():
-                return ErrorClassification(
-                    error_type=ErrorType.TYPE_INCOMPATIBLE,
-                    severity=ErrorSeverity.LOW,
-                    user_message=f"Already {'an image' if 'image' in op else 'a PDF' if 'pdf' in op else 'a Word document'}",
-                    system_message=f"Skipping redundant operation: {operation} on {file_type}",
-                    action="skip",
-                    can_recover=True,
-                    recovery_action="skip"
-                )
+        key = (operation, file_type.lower())
+        if key in skip_cases:
+            return ErrorClassification(
+                error_type=ErrorType.TYPE_INCOMPATIBLE,
+                severity=ErrorSeverity.LOW,
+                user_message=skip_cases[key],
+                system_message=f"Skipping redundant operation: {operation} on {file_type}",
+                action="skip",
+                can_recover=True,
+                recovery_action="skip"
+            )
         
         return None
     
