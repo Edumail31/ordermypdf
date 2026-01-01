@@ -568,15 +568,33 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
 # ============================================
 
 class AIParser:
-    """Parses user intent using Groq LLM"""
+    """Parses user intent using Groq LLM with dual-model fallback"""
     
     def __init__(self):
         self.client = Groq(api_key=settings.groq_api_key)
-        self.model = settings.llm_model
+        self.primary_model = settings.llm_model
+        self.fallback_model = getattr(settings, 'llm_model_fallback', settings.llm_model)
+    
+    def _call_model(self, model: str, user_message: str) -> dict:
+        """Call a specific model and return parsed JSON response"""
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.1,
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+        raw_json = response.choices[0].message.content
+        print(f"[AI:{model}] Response: {raw_json}")
+        return json.loads(raw_json)
     
     def parse_intent(self, user_prompt: str, file_names: list[str], last_question: str = "") -> Union[ParsedIntent, list[ParsedIntent]]:
         """
         Convert natural language prompt + file list into structured intent.
+        Uses dual-model approach: fast primary model, fallback to capable model if needed.
         
         Args:
             user_prompt: User's natural language instruction
@@ -601,22 +619,28 @@ Files: {json.dumps(file_names)}
 Parse this into JSON:"""
         
         try:
-            # Call Groq API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message}
-                ],
-                temperature=0.1,  # Low temperature for consistent parsing
-                max_tokens=500,
-                response_format={"type": "json_object"}  # Force JSON output
-            )
+            # Try primary (fast) model first
+            try:
+                parsed_json = self._call_model(self.primary_model, user_message)
+            except Exception as primary_error:
+                # If primary fails entirely, try fallback
+                if self.fallback_model != self.primary_model:
+                    print(f"[AI] Primary model error: {primary_error}, trying fallback: {self.fallback_model}")
+                    parsed_json = self._call_model(self.fallback_model, user_message)
+                else:
+                    raise
             
-            # Extract JSON response
-            raw_json = response.choices[0].message.content
-            print(f"[AI] Response: {raw_json}")
-            parsed_json = json.loads(raw_json)
+            # If primary model needs clarification and we have a fallback, try fallback
+            if parsed_json.get("needs_clarification") and self.fallback_model != self.primary_model:
+                print(f"[AI] Primary model uncertain, trying fallback: {self.fallback_model}")
+                try:
+                    fallback_json = self._call_model(self.fallback_model, user_message)
+                    # Use fallback result if it's more confident (no clarification needed)
+                    if not fallback_json.get("needs_clarification"):
+                        print(f"[AI] Fallback model succeeded")
+                        parsed_json = fallback_json
+                except Exception as e:
+                    print(f"[AI] Fallback model failed: {e}, using primary result")
 
             def _sanitize_rotate_pages(obj: dict) -> None:
                 """Normalize common LLM outputs for rotate.pages.

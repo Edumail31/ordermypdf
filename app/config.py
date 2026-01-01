@@ -11,12 +11,11 @@ class Settings(BaseSettings):
     
     # AI / LLM Configuration
     groq_api_key: str = "test-key-configure-in-env"
-    # Free Groq models (all free, different rate limits):
-    # - llama-3.1-8b-instant: HIGHEST free limits, very fast
-    # - gemma2-9b-it: Good balance
-    # - mixtral-8x7b-32768: 32K context
-    # - llama-3.3-70b-versatile: Best quality, lower limits
-    llm_model: str = "llama-3.1-8b-instant"
+    # Dual-model setup: fast primary + capable fallback
+    # Primary: fast model for quick parsing (highest rate limits)
+    # Fallback: more capable model for complex/ambiguous cases
+    llm_model: str = "llama-3.1-8b-instant"  # Primary: fast, high limits
+    llm_model_fallback: str = "llama-3.3-70b-versatile"  # Fallback: more capable
     
     # Server Configuration
     host: str = "0.0.0.0"
