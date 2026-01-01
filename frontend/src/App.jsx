@@ -1172,9 +1172,11 @@ export default function App() {
       isNonEmptyArray(lastMsg?.options) &&
       lastMsg.options.includes(rawUserText);
 
+    const inputSource = clickedKnownOption ? "button" : "text";
+
     // If we're in a clarification flow, transform the reply into a complete instruction.
     const composed = clickedKnownOption
-      ? applyHumanDefaults(rawUserText)
+      ? rawUserText
       : pendingClarification
       ? buildClarifiedPrompt({
           baseInstruction: pendingClarification.baseInstruction,
@@ -1185,7 +1187,11 @@ export default function App() {
 
     // Auto-apply 25% compression target for plain "compress" commands
     let finalComposed = composed;
-    if (isPlainCompress(composed) && !hasSpecificCompressionTarget(composed)) {
+    if (
+      !clickedKnownOption &&
+      isPlainCompress(composed) &&
+      !hasSpecificCompressionTarget(composed)
+    ) {
       const fileSizeMB = getTotalFileSizeMB(files);
       const targetMB = Math.max(1, Math.round(fileSizeMB * 0.25));
       finalComposed = `compress to ${targetMB}mb`;
@@ -1261,6 +1267,7 @@ export default function App() {
           formData.append("context_question", pendingClarification.question);
         }
         formData.append("session_id", sessionIdRef.current);
+        if (inputSource) formData.append("input_source", inputSource);
 
         const response = await fetch("/submit-reuse", {
           method: "POST",
@@ -1299,6 +1306,7 @@ export default function App() {
           formData.append("context_question", pendingClarification.question);
         }
         formData.append("session_id", sessionIdRef.current);
+        if (inputSource) formData.append("input_source", inputSource);
 
         // Upload with progress tracking
         const uploadResult = await new Promise((resolve, reject) => {

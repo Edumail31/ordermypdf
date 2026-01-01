@@ -324,8 +324,59 @@ def _lock_intent(st: SessionState | None, action_text: str, source: str) -> None
         return
     st.intent_status = "RESOLVED"
     st.intent_source = source
-    st.locked_action = normalize_whitespace(action_text)
+    st.locked_action = _canonicalize_button_action(action_text) if source == "button" else normalize_whitespace(action_text)
     st.updated_at = time.time()
+
+
+def _canonicalize_button_action(label: str) -> str:
+    """Convert UI button labels into an executable prompt.
+
+    Button labels are meant for humans and can be short (e.g., "PDF to DOCX").
+    This function converts them into stable, parser-friendly commands.
+    """
+    raw = normalize_whitespace(label)
+    # Strip emojis / non-ascii chars to stabilize matching.
+    s = re.sub(r"[^\x00-\x7F]+", "", raw)
+    s = normalize_whitespace(s)
+    low = s.lower()
+
+    # Common "A to B" conversions.
+    m = re.fullmatch(r"(pdf|docx|png|jpg|jpeg)\s+to\s+(pdf|docx|png|jpg|jpeg)", low)
+    if m:
+        return f"convert {m.group(1)} to {m.group(2)}"
+
+    # Common convert labels.
+    if low.startswith("convert to "):
+        return low
+    if low.endswith("to docx"):
+        return "convert pdf to docx"
+    if low.endswith("to pdf"):
+        return "convert to pdf"
+
+    # Compression labels.
+    m = re.search(r"compress\s+to\s+(\d+(?:\.\d+)?)\s*(kb|mb)", low)
+    if m:
+        return f"compress to {m.group(1)}{m.group(2)}"
+    if "compress" in low:
+        return "compress"
+
+    # Other common operations.
+    if "ocr" in low:
+        return "ocr this"
+    if "split" in low:
+        return "split pages"
+    if "merge" in low:
+        return "merge"
+    if "rotate" in low:
+        return "rotate"
+    if "flatten" in low:
+        return "flatten pdf"
+    if "watermark" in low:
+        return "add watermark"
+    if "page number" in low or "page numbers" in low:
+        return "add page numbers"
+
+    return low or raw
 
 
 def _is_button_confirmation(st: SessionState | None, incoming_text: str) -> bool:
@@ -1127,6 +1178,9 @@ def process_job_background(job_id: str):
         locked_prompt = None
         if session and session.intent_status == "RESOLVED" and session.locked_action:
             locked_prompt = session.locked_action
+        elif getattr(job, "input_source", None) == "button":
+            _lock_intent(session, prompt, "button")
+            locked_prompt = session.locked_action
         elif _is_button_confirmation(session, prompt):
             _lock_intent(session, prompt, "button")
             locked_prompt = session.locked_action
@@ -1449,6 +1503,7 @@ async def submit_with_preupload(
     prompt: str = Form(..., description="Natural language instruction"),
     context_question: str | None = Form(default=None),
     session_id: str | None = Form(default=None),
+    input_source: str | None = Form(default=None),
 ):
     """
     Submit a job using pre-uploaded files.
@@ -1470,7 +1525,7 @@ async def submit_with_preupload(
 
         session = _get_session(session_id)
         prompt_to_use = prompt
-        if _is_button_confirmation(session, prompt):
+        if (input_source or "").lower() == "button" or _is_button_confirmation(session, prompt):
             _lock_intent(session, prompt, "button")
             prompt_to_use = session.locked_action or prompt
         
@@ -1489,6 +1544,7 @@ async def submit_with_preupload(
             prompt=prompt_to_use,
             session_id=session_id,
             context_question=context_question,
+            input_source=input_source,
         )
         
         print(f"[JOB CREATED from preupload] {job_id} - Files: {file_names}, Prompt: {prompt_to_use[:50]}...")
@@ -1511,6 +1567,7 @@ async def submit_job(
     prompt: str = Form(..., description="Natural language instruction"),
     context_question: str | None = Form(default=None),
     session_id: str | None = Form(default=None),
+    input_source: str | None = Form(default=None),
 ):
     """
     Submit a job for background processing.
@@ -1532,7 +1589,7 @@ async def submit_job(
 
         session = _get_session(session_id)
         prompt_to_use = prompt
-        if _is_button_confirmation(session, prompt):
+        if (input_source or "").lower() == "button" or _is_button_confirmation(session, prompt):
             _lock_intent(session, prompt, "button")
             prompt_to_use = session.locked_action or prompt
         
@@ -1542,6 +1599,7 @@ async def submit_job(
             prompt=prompt_to_use,
             session_id=session_id,
             context_question=context_question,
+            input_source=input_source,
         )
         
         print(f"[JOB CREATED] {job_id} - Files: {file_names}, Prompt: {prompt_to_use[:50]}...")
@@ -1566,6 +1624,7 @@ async def submit_job_reuse(
     prompt: str = Form(..., description="Natural language instruction"),
     context_question: str | None = Form(default=None),
     session_id: str | None = Form(default=None),
+    input_source: str | None = Form(default=None),
 ):
     """
     Submit a job using files already uploaded to the server.
@@ -1591,7 +1650,7 @@ async def submit_job_reuse(
         # Create job (starts processing in background)
         session = _get_session(session_id)
         prompt_to_use = prompt
-        if _is_button_confirmation(session, prompt):
+        if (input_source or "").lower() == "button" or _is_button_confirmation(session, prompt):
             _lock_intent(session, prompt, "button")
             prompt_to_use = session.locked_action or prompt
 
@@ -1600,6 +1659,7 @@ async def submit_job_reuse(
             prompt=prompt_to_use,
             session_id=session_id,
             context_question=context_question,
+            input_source=input_source,
         )
         
         print(f"[JOB REUSE] {job_id} - Files: {files_list}, Prompt: {prompt_to_use[:50]}...")
@@ -1781,6 +1841,10 @@ async def process_pdfs(
         default=None,
         description="Optional session id for multi-turn slot filling and one-shot clarifications",
     ),
+    input_source: str | None = Form(
+        default=None,
+        description="Optional input source hint: text|llm|button",
+    ),
 ):
     """
     Main endpoint: Process PDFs based on natural language prompt.
@@ -1811,7 +1875,7 @@ async def process_pdfs(
         locked_prompt = None
         if session and session.intent_status == "RESOLVED" and session.locked_action:
             locked_prompt = session.locked_action
-        elif _is_button_confirmation(session, prompt):
+        elif (input_source or "").lower() == "button" or _is_button_confirmation(session, prompt):
             _lock_intent(session, prompt, "button")
             locked_prompt = session.locked_action
 

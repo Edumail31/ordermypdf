@@ -53,6 +53,7 @@ class JobInfo:
     prompt: str = ""
     session_id: Optional[str] = None
     context_question: Optional[str] = None
+    input_source: Optional[str] = None  # text | llm | button
     
     # Output data
     result_status: Optional[str] = None  # "success" or "error"
@@ -103,6 +104,7 @@ class JobQueue:
         prompt: str,
         session_id: Optional[str] = None,
         context_question: Optional[str] = None,
+        input_source: Optional[str] = None,
     ) -> str:
         """Create a new job and return its ID"""
         job_id = str(uuid.uuid4())[:12]  # Short IDs are easier to work with
@@ -113,6 +115,7 @@ class JobQueue:
             prompt=prompt,
             session_id=session_id,
             context_question=context_question,
+            input_source=input_source,
         )
         
         with self._lock:
