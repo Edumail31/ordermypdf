@@ -28,14 +28,11 @@ class CompressedJobInfo:
     @staticmethod
     def _compress(job_info: JobInfo) -> bytes:
         """Compress JobInfo to binary format"""
-        # Convert to dict
         data = asdict(job_info)
         
-        # Convert to JSON string
         json_str = json.dumps(data, default=str)
         json_bytes = json_str.encode('utf-8')
         
-        # Compress with zlib
         compressed = zlib.compress(json_bytes, level=9)
         
         return compressed
@@ -52,7 +49,6 @@ class CompressedJobInfo:
         """Decompress and reconstruct JobInfo object"""
         data = self._decompress(self.compressed_data)
         
-        # Handle enum conversion
         if isinstance(data.get('status'), str):
             data['status'] = JobStatus(data['status'])
         

@@ -81,7 +81,6 @@ class JobArchive:
                 
                 if row:
                     job_data = json.loads(row[0])
-                    # Convert status string back to enum
                     if 'status' in job_data:
                         job_data['status'] = JobStatus(job_data['status'])
                     return JobInfo(**job_data)
@@ -134,5 +133,4 @@ class JobArchive:
 
 import time
 
-# Global archive instance
 job_archive = JobArchive()

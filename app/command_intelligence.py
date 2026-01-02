@@ -43,7 +43,6 @@ class CommandParsing:
     confidence_level: ConfidenceLevel
     ambiguity: AmbiguityLevel
     
-    # Context for 3-stage resolution
     parsed_from_stage: str  # "direct", "rephrased", "clarified"
     issues: List[str] = None  # Issues found during parsing
     
@@ -55,7 +54,6 @@ class CommandParsing:
 class CommandPatterns:
     """Pre-compiled regex patterns for command parsing"""
     
-    # Operation detection patterns
     MERGE_PATTERNS = [
         r"merge",
         r"combine",
@@ -126,7 +124,6 @@ class CommandPatterns:
         r"deduplicate",
     ]
     
-    # Compile patterns
     COMPILED_PATTERNS: Dict[str, List[re.Pattern]] = {
         "merge": [re.compile(p, re.IGNORECASE) for p in MERGE_PATTERNS],
         "split": [re.compile(p, re.IGNORECASE) for p in SPLIT_PATTERNS],
@@ -173,11 +170,9 @@ class CommandIntelligence:
         """
         confidence = 0.0
         
-        # Factor 1: Intent clarity (0.0-0.3)
         if CommandIntelligence.detect_intent(prompt):
             confidence += 0.3
         
-        # Factor 2: Parameter completeness (0.0-0.4)
         required_params = {
             "merge": ["files"],
             "split": ["pages"],
@@ -197,7 +192,6 @@ class CommandIntelligence:
             else:
                 confidence += 0.4  # No required params
         
-        # Factor 3: Low ambiguity (0.0-0.3)
         ambiguity = CommandIntelligence.detect_ambiguity(prompt, intent)
         if ambiguity == AmbiguityLevel.LOW:
             confidence += 0.3
@@ -232,26 +226,20 @@ class CommandIntelligence:
         """
         prompt_lower = prompt.lower()
         
-        # Count clarity indicators
         clarity_score = 0
         
-        # Page numbers mentioned
         if re.search(r"pages?\s+\d", prompt_lower):
             clarity_score += 2
         
-        # Target format mentioned
         if re.search(r"to\s+(pdf|docx|jpg|png)", prompt_lower):
             clarity_score += 2
         
-        # Compression level mentioned
         if re.search(r"(small|tiny|reduce|half|email|whatsapp)", prompt_lower):
             clarity_score += 1
         
-        # Multiple operations mentioned
         if len(CommandIntelligence.find_all_intents(prompt)) > 1:
             clarity_score -= 1
         
-        # Vague keywords
         if re.search(r"(fix|optimize|make nice|whatever|something)", prompt_lower):
             clarity_score -= 2
         
@@ -286,7 +274,6 @@ class CommandIntelligence:
         prompt_lower = prompt.lower()
         
         if intent == "split":
-            # Extract page numbers: "pages 1-5", "pages 1, 3, 5"
             match = re.search(r"pages?\s+(?:(\d+)\s*-\s*(\d+)|(\d+(?:\s*,\s*\d+)*))", prompt_lower)
             if match:
                 if match.group(1) and match.group(2):  # Range
@@ -295,7 +282,6 @@ class CommandIntelligence:
                     parameters["pages"] = [int(n.strip()) for n in match.group(3).split(",")]
         
         elif intent == "delete":
-            # Similar to split
             match = re.search(r"pages?\s+(?:(\d+)\s*-\s*(\d+)|(\d+(?:\s*,\s*\d+)*))", prompt_lower)
             if match:
                 if match.group(1) and match.group(2):
@@ -304,12 +290,10 @@ class CommandIntelligence:
                     parameters["pages"] = [int(n.strip()) for n in match.group(3).split(",")]
         
         elif intent == "compress":
-            # Extract target size: "to 1mb", "to 2mb"
             match = re.search(r"to\s+(\d+)\s*mb", prompt_lower)
             if match:
                 parameters["target_mb"] = int(match.group(1))
             
-            # Or compression level
             if "screen" in prompt_lower or "email" in prompt_lower:
                 parameters["preset"] = "screen"
             elif "ebook" in prompt_lower:
@@ -318,7 +302,6 @@ class CommandIntelligence:
                 parameters["preset"] = "printer"
         
         elif intent == "convert":
-            # Extract target format
             formats = ["pdf", "docx", "jpg", "png", "word", "image"]
             for fmt in formats:
                 if fmt in prompt_lower:
@@ -326,7 +309,6 @@ class CommandIntelligence:
                     break
         
         elif intent == "rotate":
-            # Extract rotation degrees
             if "90" in prompt_lower:
                 parameters["degrees"] = 90
             elif "180" in prompt_lower:
@@ -351,22 +333,17 @@ class CommandIntelligence:
         Returns:
             CommandParsing with confidence and ambiguity, or None if parsing fails
         """
-        # Detect intent
         intent = CommandIntelligence.detect_intent(prompt)
         if not intent:
             return None
         
-        # Extract parameters
         parameters = CommandIntelligence.extract_parameters(prompt, intent)
         
-        # Calculate confidence
         confidence = CommandIntelligence.calculate_confidence(prompt, intent, parameters)
         confidence_level = CommandIntelligence.get_confidence_level(confidence)
         
-        # Detect ambiguity
         ambiguity = CommandIntelligence.detect_ambiguity(prompt, intent)
         
-        # Identify issues
         issues = []
         if ambiguity == AmbiguityLevel.HIGH:
             issues.append("Vague intent - unclear what to do")
@@ -384,11 +361,9 @@ class CommandIntelligence:
         )
 
 
-# Three-stage resolution pipeline
 class ResolutionPipeline:
     """Three-stage command resolution pipeline"""
     
-    # Stage 1: Direct parse
     STAGE1_CONFIDENCE_THRESHOLD = 0.7
     
     @staticmethod
@@ -429,14 +404,11 @@ class ResolutionPipeline:
             if not getattr(settings, "enable_llm_rephrase", True):
                 return None
         except Exception:
-            # If config is unavailable, remain non-blocking.
             return None
 
         try:
             from app.phraser import rephrase_with_fallback
 
-            # If prior_context is provided, include it in the prompt lightly.
-            # Keep it minimal to avoid changing semantics.
             prompt_to_rephrase = prompt
             if prior_context:
                 prompt_to_rephrase = f"{prompt}\nContext: {prior_context}"
@@ -513,16 +485,13 @@ class ResolutionPipeline:
             - If CommandParsing is returned: resolved successfully
             - If clarification_tuple is returned: need user input
         """
-        # Stage 1: Direct parse
         parsing = ResolutionPipeline.stage1_direct_parse(prompt)
         if parsing:
             return parsing, None
         
-        # Stage 2: LLM rephrase
         parsing = ResolutionPipeline.stage2_llm_rephrase(prompt, prior_context)
         if parsing and parsing.confidence >= ResolutionPipeline.STAGE1_CONFIDENCE_THRESHOLD:
             return parsing, None
         
-        # Stage 3: Ask clarification
         clarification = ResolutionPipeline.stage3_ask_clarification(prompt, parsing)
         return None, clarification

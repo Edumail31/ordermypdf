@@ -6,14 +6,12 @@ import React, {
   useCallback,
 } from "react";
 
-// Simple mobile detection
 function isMobileDevice() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
     navigator.userAgent
   );
 }
 
-// Simple wake lock helper
 async function requestWakeLock() {
   if ("wakeLock" in navigator) {
     try {
@@ -31,7 +29,6 @@ async function releaseWakeLock(lock) {
     try {
       await lock.release();
     } catch (e) {
-      // Ignore
     }
   }
 }
@@ -40,7 +37,6 @@ function cn(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
-// Lightweight inline SVG icons - Lucide-inspired professional design
 const Icons = {
   pdf: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -205,7 +201,6 @@ function getOrCreateSessionId() {
   }
 }
 
-// Job persistence helpers for recovery after page refresh/close
 const JOB_STORAGE_KEY = "ordermypdf_pending_job";
 
 function savePendingJob(jobId, prompt, fileName, estTime) {
@@ -222,7 +217,6 @@ function loadPendingJob() {
     const raw = window.localStorage.getItem(JOB_STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    // Expire jobs after 30 minutes (same as server)
     if (Date.now() - data.startedAt > 30 * 60 * 1000) {
       clearPendingJob();
       return null;
@@ -237,7 +231,6 @@ function clearPendingJob() {
   try {
     window.localStorage.removeItem(JOB_STORAGE_KEY);
   } catch (e) {
-    // Ignore
   }
 }
 
@@ -265,50 +258,38 @@ function inferDownloadLabel(result) {
   }
 }
 
-// Calculate total file size in MB
 function getTotalFileSizeMB(files) {
   if (!files || files.length === 0) return 0;
   return files.reduce((sum, f) => sum + (f.size || 0), 0) / (1024 * 1024);
 }
 
-// Estimate wait time based on file size and operation (processing only, not upload)
 function estimateWaitTime(sizeMB, prompt) {
   const lower = (prompt || "").toLowerCase();
 
-  // Base processing time (server-side, after upload completes)
-  // These are calibrated based on actual Render server performance
   let baseSeconds;
 
-  // OCR is CPU-intensive
   if (/ocr/i.test(lower)) {
     baseSeconds = 10 + sizeMB * 0.5; // ~10s base + 0.5s per MB
   }
-  // PDF to DOCX conversion
   else if (/docx|word/i.test(lower)) {
     baseSeconds = 8 + sizeMB * 0.4;
   }
-  // Compression with target
   else if (/compress/i.test(lower)) {
-    // Iterative compression is slower for large files
     if (sizeMB > 50) {
       baseSeconds = 15 + sizeMB * 0.3;
     } else {
       baseSeconds = 8 + sizeMB * 0.25;
     }
   }
-  // PDF to images
   else if (/png|jpg|jpeg|image/i.test(lower)) {
     baseSeconds = 5 + sizeMB * 0.3;
   }
-  // Simple operations (merge, split, rotate, etc.)
   else {
     baseSeconds = 3 + sizeMB * 0.1;
   }
 
-  // Add AI parsing overhead (~2-3 seconds)
   baseSeconds += 3;
 
-  // Round to reasonable display
   const seconds = Math.max(5, Math.round(baseSeconds));
 
   if (seconds < 60) return `~${seconds}s`;
@@ -317,24 +298,17 @@ function estimateWaitTime(sizeMB, prompt) {
   return `~${mins} mins`;
 }
 
-// Check if prompt has specific compression target
 function hasSpecificCompressionTarget(prompt) {
   const lower = (prompt || "").toLowerCase();
-  // Specific MB target: "compress to 5mb", "2mb"
   if (/\d+\s*mb/i.test(lower)) return true;
-  // Percentage: "by 50%", "compress 30%"
   if (/\d+\s*%/.test(lower)) return true;
-  // Fractions: "by half", "quarter", "third"
   if (/\b(half|quarter|third)\b/i.test(lower)) return true;
-  // Qualitative with specific intent: "very tiny", "smallest", "maximum"
   if (/\b(very tiny|smallest|maximum|minimal)\b/i.test(lower)) return true;
   return false;
 }
 
-// Check if this is a plain compress command without target
 function isPlainCompress(prompt) {
   const lower = (prompt || "").toLowerCase().trim();
-  // Matches: "compress", "compress it", "compress this", "compress pdf", "compress this pdf"
   return /^compress(\s+(it|this|pdf|this pdf|the pdf))?$/i.test(lower);
 }
 
@@ -357,10 +331,6 @@ function normalizeWhitespace(s) {
 }
 
 function normalizeCompressTargetLanguage(text) {
-  // UI-only normalization to match backend parsing.
-  // Examples:
-  // - "by 2mb" -> "to 2mb"
-  // - "2 mb" -> "2mb"
   const t = normalizeWhitespace(text);
   return t
     .replace(/\bby\s*(\d+)\s*mb\b/i, "to $1mb")
@@ -430,8 +400,6 @@ function fixCommonTypos(text) {
 }
 
 function normalizePromptForSend(text) {
-  // Frontend-only “advanced” typo tolerance.
-  // We correct obvious typos for known operation keywords to increase parse success.
   const base = fixCommonTypos(normalizeCompressTargetLanguage(text));
 
   const threshold = 0.74; // conservative enough for ops, but catches "comres" -> "compress"
@@ -451,7 +419,6 @@ function normalizePromptForSend(text) {
       }
     }
 
-    // Extra safety: only correct to actual operation-ish keywords
     if (best && bestScore >= threshold) {
       return best;
     }
@@ -504,22 +471,18 @@ function buildClarifiedPrompt({ baseInstruction, question, userReply }) {
 
   if (kind === "rotate_degrees") {
     const r = normalizeWhitespace(userReply).toLowerCase();
-    // Numeric-only replies are extremely common.
     const num = r.match(/^(-?\d+)\s*(deg|degree|degrees)?$/i);
     if (num) return `rotate ${num[1]} degrees`;
     if (/\bleft\b/.test(r)) return "rotate left";
     if (/\bright\b/.test(r)) return "rotate right";
     if (/\bflip\b/.test(r)) return "rotate 180 degrees";
-    // Fall back to combining.
     return normalizeWhitespace(`${base} ${reply}`);
   }
 
   if (kind === "compress") {
-    // If they replied just "2mb" or "to 2mb", generate a clean instruction.
     const mb = reply.match(/\b(\d+)mb\b/i);
     if (mb) return `compress to ${mb[1]}mb`;
 
-    // Qualitative replies: "a little", "very tiny" etc.
     if (
       /\b(little|slight|tiny|smallest|maximum|strong|best quality|minimal compression)\b/i.test(
         reply
@@ -528,10 +491,8 @@ function buildClarifiedPrompt({ baseInstruction, question, userReply }) {
       return `compress ${reply}`;
     }
 
-    // Percent-based replies: "50%" etc.
     if (/%/.test(reply)) return `compress by ${reply.replace(/[^0-9%]/g, "")}`;
 
-    // Otherwise, combine.
     return normalizeWhitespace(`${base} ${reply}`);
   }
 
@@ -552,20 +513,17 @@ function applyHumanDefaults(text) {
   const t = normalizeWhitespace(text);
   const lower = t.toLowerCase();
 
-  // File-type only prompts (very common): execute directly.
   if (/^(png|jpg|jpeg)$/i.test(lower)) return `export pages as ${lower} images`;
   if (/^(docx|word)$/i.test(lower)) return "convert to docx";
   if (/^txt$/i.test(lower)) return "extract text";
   if (/^ocr$/i.test(lower)) return "ocr this";
 
-  // Rotate without degrees: default to 90.
   if (
     /(\brotate\b|\bturn\b|\bmake it straight\b)/i.test(lower) &&
     !/(-?\d+)/.test(lower)
   ) {
     return `${t} 90 degrees`;
   }
-  // Common rotate aliases.
   if (/\bflip\b/i.test(lower)) return "rotate 180 degrees";
   if (/\brotate\s+left\b/i.test(lower)) return "rotate -90 degrees";
   if (/\brotate\s+right\b/i.test(lower)) return "rotate 90 degrees";
@@ -610,7 +568,6 @@ export default function App() {
   const [fileAttention, setFileAttention] = useState(false);
   const [ramStats, setRamStats] = useState(null);
 
-  // Track uploaded files to avoid re-uploading
   const [uploadedFileNames, setUploadedFileNames] = useState([]); // file names on server
   const [lastUploadedFiles, setLastUploadedFiles] = useState([]); // File objects that were uploaded
 
@@ -651,7 +608,6 @@ export default function App() {
   const [statusIndex, setStatusIndex] = useState(0);
   const [recoveredJob, setRecoveredJob] = useState(null);
 
-  // Fetch RAM stats on mount and periodically
   useEffect(() => {
     let interval = null;
     let retryCount = 0;
@@ -663,13 +619,11 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           console.log("[RAM] Fetched:", data);
-          // Only set if we got useful data
           if (data && (data.rss_mb || data.peak_rss_mb || data.level)) {
             setRamStats(data);
             retryCount = 0; // Reset retry count on success
           } else {
             console.warn("[RAM] Got empty/incomplete data:", data);
-            // Retry a few times on initial load
             if (retryCount < maxRetries) {
               retryCount++;
               setTimeout(fetchRam, 2000);
@@ -680,7 +634,6 @@ export default function App() {
         }
       } catch (e) {
         console.warn("[RAM] Failed to fetch:", e);
-        // Retry on error during initial load
         if (retryCount < maxRetries) {
           retryCount++;
           setTimeout(fetchRam, 2000);
@@ -688,10 +641,8 @@ export default function App() {
       }
     };
 
-    // Initial fetch with slight delay to let backend warm up
     setTimeout(fetchRam, 500);
 
-    // Poll every 15 seconds (always, not just when idle)
     interval = setInterval(fetchRam, 15000);
 
     return () => {
@@ -699,14 +650,12 @@ export default function App() {
     };
   }, []); // Remove loading dependency so it always polls
 
-  // Check for pending job on mount (recovery after page refresh)
   useEffect(() => {
     const pending = loadPendingJob();
     if (!pending) return;
 
     setRecoveredJob(pending);
 
-    // Show recovery message
     setMessages((prev) => [
       ...prev,
       {
@@ -717,11 +666,9 @@ export default function App() {
       },
     ]);
 
-    // Resume polling for this job
     resumePendingJob(pending);
   }, []);
 
-  // Resume polling for a recovered job
   const resumePendingJob = async (pending) => {
     const { jobId, prompt, fileName } = pending;
 
@@ -759,7 +706,6 @@ export default function App() {
         });
 
         if (statusRes.status === 404) {
-          // Job expired or doesn't exist
           clearPendingJob();
           setLoading(false);
           setRecoveredJob(null);
@@ -797,7 +743,6 @@ export default function App() {
           setRamStats(statusData.ram);
         } else {
           console.warn("[RAM DEBUG] No ram field in statusData");
-          // Don't clear ramStats here - periodic fetch will update it
         }
 
         setMessages((prev) => {
@@ -888,7 +833,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Subtle cursor glow for "premium" depth.
     let raf = 0;
     const onMove = (e) => {
       const x = e?.clientX ?? 0;
@@ -921,14 +865,12 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading, result, error, clarification]);
 
-  // Wake Lock: Keep screen awake during processing (mobile)
   useEffect(() => {
     const requestWakeLock = async () => {
       if (loading && "wakeLock" in navigator) {
         try {
           wakeLockRef.current = await navigator.wakeLock.request("screen");
         } catch (err) {
-          // Wake lock request failed - not critical
           console.log("Wake lock not available:", err);
         }
       }
@@ -940,7 +882,6 @@ export default function App() {
           await wakeLockRef.current.release();
           wakeLockRef.current = null;
         } catch (err) {
-          // Ignore release errors
         }
       }
     };
@@ -956,14 +897,11 @@ export default function App() {
     };
   }, [loading]);
 
-  // Warn user if they try to leave/switch tabs during processing
   useEffect(() => {
     if (!loading) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden && loading) {
-        // Can't show toast when hidden, but we can set a flag
-        // Toast will show when they return
       }
     };
 
@@ -985,12 +923,10 @@ export default function App() {
     };
   }, [loading]);
 
-  // Check if current files match the last uploaded files
   const canReuseFiles = useCallback(() => {
     if (!uploadedFileNames.length || !lastUploadedFiles.length) return false;
     if (files.length !== lastUploadedFiles.length) return false;
 
-    // Check if all files match by name and size
     return files.every(
       (f, i) =>
         lastUploadedFiles[i] &&
@@ -999,21 +935,16 @@ export default function App() {
     );
   }, [files, uploadedFileNames, lastUploadedFiles]);
 
-  // Handle file selection
   const handleFileChange = (e) => {
     const incoming = Array.from(e.target.files || []);
 
-    // Allow re-selecting the same file(s) later.
     try {
       e.target.value = "";
     } catch {
-      // ignore
     }
 
     if (!incoming.length) return;
 
-    // Check for mixed file formats IMMEDIATELY when selecting files
-    // Backend supports PDF, images (png/jpg/jpeg), and DOCX
     const getExt = (name) => (name || "").toLowerCase().split(".").pop();
     const getCategory = (ext) => {
       if (ext === "pdf") return "pdf";
@@ -1022,7 +953,6 @@ export default function App() {
       return "unsupported";
     };
 
-    // Check incoming files for unsupported types first
     const unsupportedFiles = incoming.filter(
       (f) => getCategory(getExt(f.name)) === "unsupported"
     );
@@ -1038,13 +968,11 @@ export default function App() {
       return; // Block unsupported files
     }
 
-    // Check for mixed file formats (different types not allowed together)
     const allFiles = [...files, ...incoming];
     if (allFiles.length > 1) {
       const categories = new Set(
         allFiles.map((f) => getCategory(getExt(f.name)))
       );
-      // Remove "unsupported" from categories check since we already blocked those above
       categories.delete("unsupported");
       if (categories.size > 1) {
         setToast({
@@ -1060,12 +988,10 @@ export default function App() {
       }
     }
 
-    // Deduplicate by name+size to avoid accidental duplicates.
     const keyOf = (f) => `${f?.name || ""}::${f?.size || 0}`;
     const existingKeys = new Set(files.map(keyOf));
     const dedupedIncoming = incoming.filter((f) => !existingKeys.has(keyOf(f)));
 
-    // Enforce max file count (25)
     const MAX_FILES = 25;
     const room = Math.max(0, MAX_FILES - files.length);
     let accepted = dedupedIncoming;
@@ -1074,7 +1000,6 @@ export default function App() {
       showToast("At once only 25 files allowed.", 4500);
     }
 
-    // If no room, keep state unchanged.
     if (!accepted.length) return;
 
     const next = files.concat(accepted);
@@ -1082,7 +1007,6 @@ export default function App() {
     setFiles(next);
     setLastFileName(accepted[accepted.length - 1].name);
 
-    // Check if these are different files - reset uploaded state
     const filesChanged =
       next.length !== lastUploadedFiles.length ||
       next.some(
@@ -1097,7 +1021,6 @@ export default function App() {
       setLastUploadedFiles([]);
     }
 
-    // Show warning for large files (50MB+)
     const totalSizeMB = getTotalFileSizeMB(next);
     const maxFileMB = Math.max(
       0,
@@ -1119,11 +1042,9 @@ export default function App() {
       );
     }
 
-    // Clear any attention blink once files are added.
     setFileAttention(false);
   };
 
-  // Show toast notification
   const showToast = (message, duration = 4000) => {
     setToast({ message, exiting: false });
     setTimeout(() => {
@@ -1132,28 +1053,23 @@ export default function App() {
     }, duration);
   };
 
-  // Stop/Cancel the current process
   const stopProcess = async () => {
-    // Abort any ongoing XHR upload
     if (abortControllerRef.current?.xhr) {
       abortControllerRef.current.xhr.abort();
       abortControllerRef.current.xhr = null;
     }
 
-    // Cancel the polling abort controller
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
-    // Try to cancel the job on the server
     if (currentJobIdRef.current) {
       try {
         await fetch(`/job/${currentJobIdRef.current}/cancel`, {
           method: "POST",
         });
       } catch (e) {
-        // Ignore cancel errors
       }
       currentJobIdRef.current = null;
     }
@@ -1163,7 +1079,6 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(false);
     setProcessingMessage("");
-    // RAM stats will be refreshed by periodic fetch
     showToast("⏹️ Process stopped by user.", 3000);
     setMessages((prev) => [
       ...prev.filter((m, idx) => {
@@ -1195,7 +1110,6 @@ export default function App() {
 
     const totalSizeMB = getTotalFileSizeMB(files);
 
-    // Calculate estimated processing time (shown after upload completes)
     const estTime = estimateWaitTime(totalSizeMB, rawInput);
 
     setLoading(true);
@@ -1206,12 +1120,10 @@ export default function App() {
     setUploadProgress(0);
     setIsUploading(true);
     setProcessingMessage("");
-    // Keep existing RAM stats - will be updated by job status polling
 
     const rawUserText = rawInput;
     setLastSubmittedPrompt(rawUserText);
 
-    // If user clicked a clarification option, treat it as the final instruction.
     const lastMsg = messages[messages.length - 1];
     const clickedKnownOption =
       pendingClarification &&
@@ -1221,7 +1133,6 @@ export default function App() {
 
     const inputSource = clickedKnownOption ? "button" : "text";
 
-    // If we're in a clarification flow, transform the reply into a complete instruction.
     const composed = clickedKnownOption
       ? rawUserText
       : pendingClarification
@@ -1232,7 +1143,6 @@ export default function App() {
         })
       : applyHumanDefaults(rawUserText);
 
-    // Auto-apply 25% compression target for plain "compress" commands
     let finalComposed = composed;
     if (
       !clickedKnownOption &&
@@ -1246,11 +1156,8 @@ export default function App() {
 
     const userText = normalizePromptForSend(finalComposed);
 
-    // Chat-style: clear input immediately after send
     setPrompt("");
 
-    // Simple status message
-    // Determine status message based on whether we can reuse files
     const filesCanBeReused = canReuseFiles();
     const getStatusMessage = () => {
       if (filesCanBeReused) {
@@ -1273,14 +1180,11 @@ export default function App() {
     ]);
 
     try {
-      // Create abort controller for polling
       abortControllerRef.current = new AbortController();
 
-      // Request Wake Lock to prevent device sleep
       try {
         wakeLockRef.current = await requestWakeLock();
       } catch (e) {
-        // Wake lock not critical
       }
 
       const updateRamFromStatus = (statusData) => {
@@ -1292,17 +1196,14 @@ export default function App() {
             console.warn(
               "[RAM DEBUG resumePending] No ram field in statusData"
             );
-            // Don't clear ramStats - periodic fetch will update it
           }
         } catch {
-          // ignore
         }
       };
 
       let jobId;
       let resultFileNames = [];
 
-      // Check if we can reuse already-uploaded files
       if (filesCanBeReused && uploadedFileNames.length > 0) {
         console.log("[Submit] Reusing uploaded files:", uploadedFileNames);
         setIsUploading(false);
@@ -1324,7 +1225,6 @@ export default function App() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          // If files not found, fall back to normal upload
           if (response.status === 404) {
             console.log("[Submit] Files expired, re-uploading...");
             setUploadedFileNames([]);
@@ -1341,7 +1241,6 @@ export default function App() {
         }
       }
 
-      // If no jobId yet, do normal upload
       if (!jobId) {
         console.log("[Submit] Uploading files...");
         setIsUploading(true);
@@ -1355,7 +1254,6 @@ export default function App() {
         formData.append("session_id", sessionIdRef.current);
         if (inputSource) formData.append("input_source", inputSource);
 
-        // Upload with progress tracking
         const uploadResult = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.timeout = 600000;
@@ -1417,7 +1315,6 @@ export default function App() {
         setUploadProgress(100);
       }
 
-      // Store uploaded file names for reuse
       if (resultFileNames.length > 0) {
         setUploadedFileNames(resultFileNames);
         setLastUploadedFiles([...files]);
@@ -1425,15 +1322,12 @@ export default function App() {
 
       currentJobIdRef.current = jobId;
 
-      // Save job to localStorage for recovery
       savePendingJob(jobId, userText, files[0]?.name || "file", estTime);
 
-      // Release wake lock
       await releaseWakeLock(wakeLockRef.current);
       wakeLockRef.current = null;
       setProcessingMessage("Processing...");
 
-      // Update status message for processing
       setMessages((prev) => {
         const trimmed = prev.filter((m, idx) => {
           if (idx !== prev.length - 1) return true;
@@ -1450,13 +1344,11 @@ export default function App() {
         ];
       });
 
-      // Step 2: Poll for status until done
       let completed = false;
       let pollCount = 0;
       const maxPolls = 600; // 10 minutes at 1 second intervals
 
       while (!completed && pollCount < maxPolls) {
-        // Check if cancelled
         if (abortControllerRef.current?.signal.aborted) {
           throw new DOMException("Cancelled", "AbortError");
         }
@@ -1481,10 +1373,8 @@ export default function App() {
           statusData.status
         );
 
-        // Update processing message
         setProcessingMessage(statusText);
 
-        // Update the status bubble - simple progress display
         setMessages((prev) => {
           const trimmed = prev.filter((m, idx) => {
             if (idx !== prev.length - 1) return true;
@@ -1508,9 +1398,7 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on completion
-          // RAM stats will be refreshed by periodic fetch
 
-          // Remove the status bubble
           setMessages((prev) => {
             const trimmed = prev.filter((m, idx) => {
               if (idx !== prev.length - 1) return true;
@@ -1531,7 +1419,6 @@ export default function App() {
             setPendingClarification(null);
             setClarification("");
             setProcessingMessage("Complete!");
-            // Trigger download button blink
             setDownloadBlink(true);
             setTimeout(() => setDownloadBlink(false), 1600);
             setMessages((prev) => [
@@ -1544,7 +1431,6 @@ export default function App() {
               },
             ]);
           } else {
-            // Handle error or clarification
             const msg = resultData?.message || "Unknown error";
             const hasOptions = isNonEmptyArray(resultData?.options);
 
@@ -1579,7 +1465,6 @@ export default function App() {
           completed = true;
           currentJobIdRef.current = null;
           clearPendingJob(); // Clear localStorage on cancel
-          // RAM stats will be refreshed by periodic fetch
         }
       }
 
@@ -1616,7 +1501,6 @@ export default function App() {
       setLoading(false);
       abortControllerRef.current = null;
 
-      // Release wake lock if still held (error case)
       await releaseWakeLock(wakeLockRef.current);
       wakeLockRef.current = null;
     }
@@ -1624,7 +1508,6 @@ export default function App() {
 
   const handleOptionClick = async (opt) => {
     if (loading) return;
-    // Submit immediately with the option text (do not concatenate with prior prompt).
     await submit(opt);
   };
 

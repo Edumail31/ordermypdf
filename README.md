@@ -1,114 +1,190 @@
-# OrderMyPDF - AI-Controlled PDF Processor
+# OrderMyPDF
 
-A learning-focused MVP that uses natural language prompts to control PDF operations.
+Professional document processing platform powered by AI. Merge, split, compress, OCR, convert, and perform advanced operations on PDFs, images, and Word documents with natural language commands.
 
-## Architecture
+## 🚀 Features
 
-```
-User Prompt
-   ↓
-AI Intent Parser (LLM)
-   ↓
-Structured JSON Plan
-   ↓
-Backend Executor (Python)
-   ↓
-Processed PDF Output
-```
+- **Natural Language Interface** - Describe what you need in plain English
+- **Multi-Format Support** - PDF, PNG, JPG, DOCX with seamless conversion
+- **Batch Processing** - Handle multiple files efficiently
+- **Advanced Operations**
+  - Merge & split PDFs
+  - Image compression with quality control
+  - OCR text recognition
+  - Format conversion (PDF ↔ DOCX/JPG/PNG)
+  - Remove blank/duplicate pages
+  - Page reordering
+  - Watermarking & metadata editing
+  - Flatten & optimize
+- **Real-time Processing** - Live status updates and progress tracking
+- **Secure & Private** - Files processed locally, never stored permanently
+- **Mobile Responsive** - Works perfectly on all devices
 
-**Key Principle:** The AI does NOT process files. It only parses intent and outputs instructions.
+## 🛠️ Tech Stack
 
-## Supported Operations
+**Backend:**
+- Python 3.10+
+- FastAPI - Modern async web framework
+- Groq API - LLM integration (llama-3.3-70b-versatile)
+- PyPDF2 - PDF manipulation
+- Pillow - Image processing
+- python-docx - Word document handling
+- pytesseract - OCR capabilities
+- Redis - Job queue management
 
-- **Merge** multiple PDFs
-- **Split** PDF by page numbers
-- **Delete** specific pages from PDF
-- **Compress** PDF file size
+**Frontend:**
+- React 18 - UI library
+- Vite - Build tool
+- Tailwind CSS - Styling
+- Professional glassmorphism design system
 
-## Tech Stack
+## 📋 Prerequisites
 
-- **Backend:** FastAPI + Python
-- **PDF Processing:** PyPDF
-- **AI:** Groq (free LLM API)
-- **Deployment:** Cloud VM with filesystem access
+- Python 3.10 or higher
+- Node.js 16+ and npm
+- Groq API key (free at groq.com)
+- Tesseract OCR (optional, for OCR features)
 
-## Setup
+## 🔧 Installation
 
-1. Clone the repository
-2. Create virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Create `.env` file (copy from `.env.example`):
-   ```bash
-   cp .env.example .env
-   ```
-
-5. Get a free Groq API key:
-   - Visit https://console.groq.com/
-   - Sign up and create an API key
-   - Add to `.env` file
-
-6. Run the server:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-## Usage
-
-### API Endpoint
-
-**POST** `/process`
-
-**Request:**
-```json
-{
-  "prompt": "merge file1.pdf and file2.pdf",
-  "files": ["file1.pdf", "file2.pdf"]
-}
+### Clone Repository
+```bash
+git clone https://github.com/asg-01/ordermypdf.git
+cd ordermypdf
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "operation": "merge",
-  "output_file": "merged_output.pdf",
-  "message": "Successfully merged 2 PDFs"
-}
+### Backend Setup
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+# Add your Groq API key to .env
+python -m uvicorn app.main:app --reload
 ```
 
-### Example Prompts
+Backend runs on `http://localhost:8000`
 
-- "Merge all these PDFs into one"
-- "Split this PDF, keep only pages 1-5"
-- "Delete pages 3, 7, and 10 from this document"
-- "Compress this PDF to reduce file size"
+### Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## Project Goals
+Frontend runs on `http://localhost:5173`
 
-This is an **educational project** to learn:
-- LLMs as controllers (not magic solvers)
-- Prompt-to-action translation
-- Safe execution of AI-generated plans
-- Backend system design
-- File processing pipelines
+## 📖 Usage
 
-## Non-Goals
+1. **Upload Files** - Click "Choose files" and select PDFs, images, or DOCX
+2. **Describe Task** - Type what you want to do
+3. **Run Agent** - Click "Run" to process with AI guidance
+4. **Download Result** - Get your processed file when ready
 
-- UI polish
-- User authentication
-- Payment processing
-- Production scalability
-- Multi-format support (DOCX, images, etc.)
+### Example Commands
+- "merge these three PDFs into one"
+- "convert this PDF to high-quality images"
+- "compress this file to 2MB without losing quality"
+- "extract text from these images"
+- "split this PDF on page 5"
+- "remove all duplicate pages"
 
-## License
+## 📁 Project Structure
 
-Educational/Personal Use
+```
+ordermypdf/
+├── app/
+│   ├── main.py
+│   ├── models.py
+│   ├── llm.py
+│   ├── processors/
+│   │   ├── pdf.py
+│   │   ├── image.py
+│   │   └── docx.py
+│   ├── queue/
+│   │   └── job_queue.py
+│   └── utils/
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   └── package.json
+├── uploads/
+├── outputs/
+└── requirements.txt
+```
+
+## 🔐 Environment Variables
+
+Create `.env` file:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+LLM_MODEL=llama-3.3-70b-versatile
+PORT=8000
+HOST=0.0.0.0
+MAX_FILE_SIZE_MB=100
+UPLOAD_FOLDER=./uploads
+OUTPUT_FOLDER=./outputs
+FRONTEND_URL=http://localhost:5173
+```
+
+## 🚀 Deployment
+
+### Docker
+```bash
+docker build -t ordermypdf .
+docker run -p 8000:8000 -e GROQ_API_KEY=your_key ordermypdf
+```
+
+## 🧪 Testing
+
+```bash
+pytest tests/ -v
+cd frontend && npm test
+```
+
+## 📊 API Endpoints
+
+- `POST /process` - Submit processing request
+- `GET /status/{job_id}` - Get job status
+- `GET /download/{filename}` - Download processed file
+- `GET /health` - Server health check
+
+## 🎨 Design Features
+
+- **Glassmorphism** - Modern frosted glass effect UI
+- **Dark Mode** - Professional dark theme
+- **Responsive Design** - Perfect on all devices
+- **Accessibility** - WCAG 2.1 AA compliant
+
+## 🛡️ Security
+
+- File validation on upload
+- Size limits enforcement
+- Automatic cleanup of old files
+- CORS protection
+- No permanent file storage
+
+## 🐛 Troubleshooting
+
+### Port Already in Use
+```bash
+# Find and kill process
+lsof -ti:5173 | xargs kill -9
+lsof -ti:8000 | xargs kill -9
+```
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [FastAPI](https://fastapi.tiangolo.com/)
+- UI powered by [React](https://react.dev/)
+- Styling with [Tailwind CSS](https://tailwindcss.com/)
+- LLM via [Groq](https://groq.com/)
+
+---
+
+**Made with ❤️ by the OrderMyPDF Team**

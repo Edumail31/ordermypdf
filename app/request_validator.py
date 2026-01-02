@@ -22,7 +22,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Valid operations that the system supports
 VALID_OPERATIONS = {
     "merge", "split", "compress", "ocr", "rotate", "delete_pages",
     "extract_pages", "reorder", "watermark", "page_numbers", "convert",
@@ -30,7 +29,6 @@ VALID_OPERATIONS = {
     "pdf_to_docx", "docx_to_pdf", "extract_text", "split_pages"
 }
 
-# File type constraints per operation
 OPERATION_FILE_CONSTRAINTS = {
     "merge": {"types": ["pdf"], "description": "PDFs only"},
     "split": {"types": ["pdf"], "description": "PDFs only"},
@@ -51,7 +49,6 @@ def get_file_type(filename: str) -> str:
     
     ext = filename.rsplit(".", 1)[-1].lower()
     
-    # Normalize extensions
     if ext in ("jpg", "jpeg"):
         return "jpg"
     if ext in ("png",):
@@ -67,7 +64,6 @@ def get_file_type(filename: str) -> str:
 def is_file_compatible(operation: str, file_type: str) -> tuple[bool, str]:
     """Check if file type is compatible with operation"""
     if operation not in OPERATION_FILE_CONSTRAINTS:
-        # Operation has no constraints
         return True, ""
     
     allowed_types = OPERATION_FILE_CONSTRAINTS[operation]["types"]
@@ -95,17 +91,13 @@ async def validate_request_middleware(request: Request, call_next: Callable) -> 
         return await call_next(request)
     
     try:
-        # Store original body for later use
         body = await request.body()
         
-        # Parse form data
         from io import BytesIO
         import tempfile
         
-        # For now, mark request as validated (detailed validation happens in route)
         request.state.validated = True
         
-        # Re-wrap body so it can be read again
         async def receive():
             return {"type": "http.request", "body": body, "more_body": False}
         
@@ -116,7 +108,6 @@ async def validate_request_middleware(request: Request, call_next: Callable) -> 
         
     except Exception as e:
         logger.warning(f"Validation middleware error: {e}")
-        # Let request proceed if validation fails (don't block)
         return await call_next(request)
 
 
@@ -149,12 +140,10 @@ def validate_files(files: list, operation: str) -> tuple[bool, str]:
         filename = file.filename
         file_type = get_file_type(filename)
         
-        # Check file type compatibility
         is_compatible, error_msg = is_file_compatible(operation, file_type)
         if not is_compatible:
             return False, error_msg
         
-        # Check file size
         if hasattr(file, 'size'):
             file_size_mb = file.size / (1024 * 1024)
             if file_size_mb > MAX_FILE_SIZE_MB:
@@ -162,7 +151,6 @@ def validate_files(files: list, operation: str) -> tuple[bool, str]:
             
             total_size += file.size
     
-    # Check total size
     total_size_mb = total_size / (1024 * 1024)
     if total_size_mb > MAX_TOTAL_SIZE_MB:
         return False, f"Total file size {total_size_mb:.1f}MB exceeds limit of {MAX_TOTAL_SIZE_MB}MB"

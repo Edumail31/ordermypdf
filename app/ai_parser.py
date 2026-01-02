@@ -15,9 +15,6 @@ from app.models import ParsedIntent
 from app.llm_output_handler import safe_get, safe_get_nested
 import re
 
-# ============================================
-# PRECOMPILED PATTERNS FOR PERFORMANCE
-# ============================================
 
 RE_NUMERIC_ONLY = re.compile(r'^\d+$')
 RE_NUMERIC_WITH_UNIT = re.compile(r'^\d+\s*(mb|kb)?$', re.IGNORECASE)
@@ -40,9 +37,6 @@ RE_COMPRESS_SMALLER = re.compile(r'\bsmaller\b', re.IGNORECASE)
 RE_COMPRESS_REDUCED = re.compile(r'\breduced\b', re.IGNORECASE)
 import re
 
-# ============================================
-# PRECOMPILED PATTERNS FOR PERFORMANCE
-# ============================================
 
 RE_NUMERIC_ONLY = re.compile(r'^\d+$')
 RE_NUMERIC_WITH_UNIT = re.compile(r'^\d+\s*(mb|kb)?$', re.IGNORECASE)
@@ -65,9 +59,6 @@ RE_COMPRESS_SMALLER = re.compile(r'\bsmaller\b', re.IGNORECASE)
 RE_COMPRESS_REDUCED = re.compile(r'\breduced\b', re.IGNORECASE)
 
 
-# ============================================
-# SYSTEM PROMPT FOR THE LLM
-# ============================================
 
 SYSTEM_PROMPT = """You are an intelligent intent parser for a PDF processing system. Your job is to analyze user instructions and either:
 1. Output structured JSON for clear instructions
@@ -453,9 +444,6 @@ Output: {
 Now parse the following request and respond with ONLY valid JSON, no explanation:"""
 
 
-# ============================================
-# INPUT NORMALIZATION (HUMAN ERROR HANDLING)
-# ============================================
 
 def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
     """
@@ -477,7 +465,6 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
     import re
     p = user_prompt.strip().lower()
     
-    # Handle common typos
     typo_map = {
         'rotet': 'rotate',
         'roate': 'rotate',
@@ -496,14 +483,11 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
         'extrat': 'extract',
     }
     for typo, correct in typo_map.items():
-      # Avoid corrupting already-correct words (e.g., "compress" contains "compres").
-      # For simple letter-only typos, replace whole words only.
       if typo.isalpha():
         p = re.sub(rf"\b{re.escape(typo)}\b", correct, p)
       else:
         p = p.replace(typo, correct)
     
-    # Handle shorthand
     shorthand_map = {
         r'\brot\b': 'rotate',
         r'\bzip\b': 'compress as small as possible',
@@ -518,27 +502,21 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
         r'\bhtml\b': 'convert to html',
     }
     for pattern, replacement in shorthand_map.items():
-      # Avoid duplicating expansions when user already wrote the full phrase.
       if pattern in {r'\bpng\b', r'\bjpg\b', r'\bimg\b'} and ("export" in p or "image" in p or "images" in p):
         continue
       if pattern == r'\btxt\b' and ("extract" in p and "text" in p):
         continue
       p = re.sub(pattern, replacement, p)
     
-    # Handle numeric-only responses in context
-    # If user just typed a number and last_question asked about degrees → rotate N degrees
     if re.match(r'^\d+$', p) and 'degree' in last_question.lower():
         p = f'rotate {p} degrees'
     
-    # If user just typed a number and last_question asked about page → split page N
     elif re.match(r'^\d+$', p) and ('page' in last_question.lower() and 'extract' in last_question.lower()):
         p = f'split page {p}'
     
-    # If user just typed a number and last_question asked about target size → compress to N MB
     elif re.match(r'^\d+\s*(mb|kb)?$', p, re.IGNORECASE) and 'size' in last_question.lower():
         p = f'compress to {p}'
     
-    # Handle common directional aliases for rotate
     rotate_aliases = {
         'left': 'rotate 270 degrees (counter-clockwise)',
         'right': 'rotate 90 degrees (clockwise)',
@@ -550,7 +528,6 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
         if alias in p:
             p = p.replace(alias, expansion)
     
-    # Handle compression shortcuts
     compression_map = {
         r'\bemail\b': 'compress to email-safe size (10MB max)',
         r'\bwhatsapp\b': 'compress very aggressively for whatsapp',
@@ -566,9 +543,6 @@ def normalize_human_input(user_prompt: str, last_question: str = "") -> str:
     return p
 
 
-# ============================================
-# PARSER IMPLEMENTATION
-# ============================================
 
 class AIParser:
     """Parses user intent using Groq LLM with dual-model fallback"""
@@ -610,11 +584,9 @@ class AIParser:
         Raises:
             ValueError: If intent cannot be parsed or needs clarification (message contains the question)
         """
-        # Normalize messy human input BEFORE sending to LLM
         normalized_prompt = normalize_human_input(user_prompt, last_question)
         print(f"[AI] Normalized input: '{user_prompt}' → '{normalized_prompt}'")
         
-        # Build the user message
         user_message = f"""
 Prompt: "{normalized_prompt}"
 Files: {json.dumps(file_names)}
@@ -622,23 +594,19 @@ Files: {json.dumps(file_names)}
 Parse this into JSON:"""
         
         try:
-            # Try primary (fast) model first
             try:
                 parsed_json = self._call_model(self.primary_model, user_message)
             except Exception as primary_error:
-                # If primary fails entirely, try fallback
                 if self.fallback_model != self.primary_model:
                     print(f"[AI] Primary model error: {primary_error}, trying fallback: {self.fallback_model}")
                     parsed_json = self._call_model(self.fallback_model, user_message)
                 else:
                     raise
             
-            # If primary model needs clarification and we have a fallback, try fallback
             if safe_get(parsed_json, "needs_clarification") and self.fallback_model != self.primary_model:
                 print(f"[AI] Primary model uncertain, trying fallback: {self.fallback_model}")
                 try:
                     fallback_json = self._call_model(self.fallback_model, user_message)
-                    # Use fallback result if it's more confident (no clarification needed)
                     if not safe_get(fallback_json, "needs_clarification"):
                         print(f"[AI] Fallback model succeeded")
                         parsed_json = fallback_json
@@ -665,7 +633,6 @@ Parse this into JSON:"""
                 except Exception:
                     return
             
-            # Check if AI is requesting clarification
             if safe_get(parsed_json, "needs_clarification"):
                 question = safe_get(parsed_json, "question", "Could you please clarify your request?")
                 suggested_format = safe_get(parsed_json, "suggested_format", "")
@@ -673,14 +640,12 @@ Parse this into JSON:"""
                 
                 clarification_msg = f"{question}\n\n{suggested_format}" if suggested_format else question
                 
-                # Encode options into the error message so clarify_intent can extract them
                 if options:
                     options_str = json.dumps(options)
                     raise ValueError(f"CLARIFICATION_NEEDED: {clarification_msg} | OPTIONS: {options_str}")
                 
                 raise ValueError(f"CLARIFICATION_NEEDED: {clarification_msg}")
 
-            # Multi-operation plan
             if safe_get(parsed_json, "is_multi_operation") and isinstance(safe_get(parsed_json, "operations"), list):
               intents: list[ParsedIntent] = []
               for op in parsed_json["operations"]:
@@ -693,7 +658,6 @@ Parse this into JSON:"""
             if isinstance(parsed_json, dict):
               _sanitize_rotate_pages(parsed_json)
             
-            # Validate against Pydantic model
             intent = ParsedIntent(**parsed_json)
             
             return intent
@@ -702,7 +666,6 @@ Parse this into JSON:"""
             print(f"[ERR] JSON decode error: {e}")
             raise ValueError(f"LLM returned invalid JSON: {e}")
         except ValueError as e:
-            # Re-raise clarification requests as-is
             if "CLARIFICATION_NEEDED" in str(e):
                 raise
             print(f"[ERR] Validation error: {e}")
@@ -712,5 +675,4 @@ Parse this into JSON:"""
             raise ValueError(f"Failed to parse intent: {e}")
 
 
-# Global parser instance
 ai_parser = AIParser()

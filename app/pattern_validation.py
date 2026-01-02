@@ -20,9 +20,6 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
-# ============================================
-# VALIDATION RESULTS
-# ============================================
 
 class ValidationStatus(str, Enum):
     """Validation outcome status"""
@@ -45,20 +42,14 @@ class ValidationResult:
     skip_reason: Optional[str] = None
 
 
-# ============================================
-# SUPPORTED COMBINATIONS
-# ============================================
 
-# File types
 FILE_TYPES = {"pdf", "docx", "doc", "jpg", "jpeg", "png", "img"}
 
-# Operations
 OPERATIONS = {
     "merge", "split", "compress", "convert", "ocr", "clean",
     "enhance", "rotate", "reorder", "flatten", "watermark", "page-numbers"
 }
 
-# Valid operation combinations per file type
 VALID_OPS_BY_TYPE: Dict[str, Set[str]] = {
     "pdf": {
         "merge", "split", "compress", "convert", "ocr", "clean",
@@ -84,7 +75,6 @@ VALID_OPS_BY_TYPE: Dict[str, Set[str]] = {
     },
 }
 
-# Redundant operation pairs (source_type, target_type)
 REDUNDANT_CONVERSIONS = {
     ("jpg", "jpg"), ("jpeg", "jpeg"), ("png", "png"),
     ("jpg", "jpeg"), ("jpeg", "jpg"),
@@ -93,12 +83,10 @@ REDUNDANT_CONVERSIONS = {
     ("img", "img"),
 }
 
-# Operations that don't make sense together
 CONFLICTING_OPS = [
     {"split", "merge"},  # Can't split and merge same file
 ]
 
-# Operations that require specific file types
 OP_REQUIRES_TYPE: Dict[str, Set[str]] = {
     "ocr": {"pdf", "jpg", "jpeg", "png", "img"},  # Not docx
     "flatten": {"pdf"},  # PDF only
@@ -108,11 +96,7 @@ OP_REQUIRES_TYPE: Dict[str, Set[str]] = {
 }
 
 
-# ============================================
-# PATTERN GROUPS (from 40K spec analysis)
-# ============================================
 
-# Prefix patterns that add no semantic meaning
 NOISE_PREFIXES = [
     r"^and\s+",
     r"^pls\s+",
@@ -135,7 +119,6 @@ NOISE_PREFIXES = [
     r"^would\s+you\s+",
 ]
 
-# Target format patterns
 TARGET_FORMAT_PATTERNS = {
     r"\bto\s+pdf\b": "pdf",
     r"\bto\s+docx?\b": "docx",
@@ -149,7 +132,6 @@ TARGET_FORMAT_PATTERNS = {
     r"\bas\s+image\b": "img",
 }
 
-# Target size patterns with normalized values
 TARGET_SIZE_PATTERNS = {
     r"\b500\s*kb\b": 0.5,  # MB
     r"\b1\s*mb\b": 1.0,
@@ -158,7 +140,6 @@ TARGET_SIZE_PATTERNS = {
     r"\b10\s*mb\b": 10.0,
 }
 
-# Purpose patterns with defaults
 PURPOSE_PRESETS = {
     "email": {"max_size_mb": 10.0, "quality": "medium"},
     "whatsapp": {"max_size_mb": 16.0, "quality": "medium"},
@@ -168,9 +149,6 @@ PURPOSE_PRESETS = {
 }
 
 
-# ============================================
-# MAIN VALIDATOR CLASS
-# ============================================
 
 class PatternValidator:
     """
@@ -203,7 +181,6 @@ class PatternValidator:
         
         source_type = source_type.lower()
         
-        # Check for empty operations
         if not operations:
             return ValidationResult(
                 status=ValidationStatus.AMBIGUOUS,
@@ -213,22 +190,18 @@ class PatternValidator:
                 user_message="No operations detected"
             )
         
-        # Check redundancy
         redundancy_result = self._check_redundancy(operations, source_type, target_type)
         if redundancy_result:
             return redundancy_result
         
-        # Check compatibility
         compat_result = self._check_compatibility(operations, source_type)
         if compat_result:
             return compat_result
         
-        # Check conflicts
         conflict_result = self._check_conflicts(operations)
         if conflict_result:
             return conflict_result
         
-        # All checks passed
         return ValidationResult(
             status=ValidationStatus.VALID,
             is_valid=True,
@@ -244,10 +217,8 @@ class PatternValidator:
     ) -> Optional[ValidationResult]:
         """Check for redundant operations"""
         
-        # Check conversion redundancy
         if "convert" in operations and target_type:
             if (source_type, target_type) in REDUNDANT_CONVERSIONS:
-                # Remove convert from pipeline
                 adjusted = [op for op in operations if op != "convert"]
                 
                 if not adjusted:
@@ -267,7 +238,6 @@ class PatternValidator:
                         user_message=f"Skipping conversion (already {target_type.upper()})"
                     )
         
-        # Check for duplicate operations
         seen = set()
         adjusted = []
         for op in operations:
@@ -368,7 +338,6 @@ class PatternValidator:
                 user_message=f"Retrying with stronger compression (current: {achieved_size_mb:.1f}MB, target: {target_size_mb:.1f}MB)"
             )
         
-        # Already retried once - accept closest result
         return ValidationResult(
             status=ValidationStatus.VALID,
             is_valid=True,
@@ -415,9 +384,6 @@ class PatternValidator:
         )
 
 
-# ============================================
-# CONVENIENCE FUNCTIONS
-# ============================================
 
 def validate_pipeline(
     operations: List[str],
@@ -438,7 +404,6 @@ def validate_pipeline(
         ValidationResult
     """
     
-    # Detect source type from filename
     ext = source_file.rsplit(".", 1)[-1].lower() if "." in source_file else "pdf"
     
     validator = PatternValidator()
@@ -483,5 +448,4 @@ def should_retry_on_size_miss(
     return False, None
 
 
-# Global validator instance
 pattern_validator = PatternValidator()

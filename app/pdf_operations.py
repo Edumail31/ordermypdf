@@ -20,17 +20,9 @@ import hashlib
 import subprocess
 import math
 
-# LAZY IMPORTS: Heavy libraries loaded on-demand inside functions
-# - pypdf (PdfReader, PdfWriter) - loaded in merge_pdfs, split_pdf, etc.
-# - pdf2docx (Converter) - loaded in pdf_to_docx
-# - fitz (PyMuPDF) - loaded in pdf_to_images_zip, compress_pdf, etc.
 
 
-# ============================================
-# LAZY IMPORT HELPERS
-# ============================================
 
-# Cached module references for lazy imports
 _pypdf_module = None
 _fitz_module = None
 _pdf2docx_module = None
@@ -63,7 +55,6 @@ def _get_pdf2docx():
     return _pdf2docx_module
 
 
-# Convenience accessors
 def PdfReader(path):
     return _get_pypdf().PdfReader(path)
 
@@ -72,9 +63,6 @@ def PdfWriter():
     return _get_pypdf().PdfWriter()
 
 
-# ============================================
-# HELPER FUNCTIONS
-# ============================================
 
 def _sanitize_text_for_xml(text: str) -> str:
     """
@@ -87,11 +75,9 @@ def _sanitize_text_for_xml(text: str) -> str:
     if not text:
         return text
     
-    # Build a string with only XML-compatible characters
     result = []
     for char in text:
         codepoint = ord(char)
-        # Allow: tab, newline, carriage return, and printable chars
         if (codepoint == 0x9 or  # tab
             codepoint == 0xA or  # newline
             codepoint == 0xD or  # carriage return
@@ -100,7 +86,6 @@ def _sanitize_text_for_xml(text: str) -> str:
             (0x10000 <= codepoint <= 0x10FFFF)):
             result.append(char)
         else:
-            # Replace invalid character with space (or skip entirely)
             result.append(' ')
     
     return ''.join(result)
@@ -132,14 +117,12 @@ def get_output_path(filename: str) -> str:
 
 def _resolve_ghostscript_executable(*, raise_if_missing: bool) -> Optional[str]:
     """Return a Ghostscript executable path if available."""
-    # Prefer PATH lookup first.
     if os.name == "nt":
         for name in ("gswin64c.exe", "gswin32c.exe"):
             found = shutil.which(name)
             if found:
                 return found
 
-        # Common install locations (best-effort)
         possible_paths = [
             r"C:\Program Files\gs\gs10.06.0\bin\gswin64c.exe",
             r"C:\Program Files (x86)\gs\gs10.06.0\bin\gswin64c.exe",
@@ -156,7 +139,6 @@ def _resolve_ghostscript_executable(*, raise_if_missing: bool) -> Optional[str]:
             )
         return None
 
-    # Linux/Mac
     found = shutil.which("gs")
     if found:
         return found
@@ -165,9 +147,6 @@ def _resolve_ghostscript_executable(*, raise_if_missing: bool) -> Optional[str]:
     return None
 
 
-# ============================================
-# PDF OPERATIONS
-# ============================================
 
 def merge_pdfs(file_names: List[str], output_name: str = "merged_output.pdf") -> str:
     """
@@ -188,7 +167,6 @@ def merge_pdfs(file_names: List[str], output_name: str = "merged_output.pdf") ->
     
     pdf_writer = PdfWriter()
     
-    # Add all pages from all PDFs
     for file_name in file_names:
         input_path = get_upload_path(file_name)
         
@@ -199,7 +177,6 @@ def merge_pdfs(file_names: List[str], output_name: str = "merged_output.pdf") ->
         for page in pdf_reader.pages:
             pdf_writer.add_page(page)
     
-    # Write merged PDF
     output_path = get_output_path(output_name)
     with open(output_path, "wb") as output_file:
         pdf_writer.write(output_file)
@@ -234,18 +211,15 @@ def split_pdf(file_name: str, pages_to_keep: List[int], output_name: str = "spli
     pdf_reader = PdfReader(input_path)
     total_pages = len(pdf_reader.pages)
     
-    # Validate page numbers
     for page_num in pages_to_keep:
         if page_num < 1 or page_num > total_pages:
             raise ValueError(f"Invalid page number: {page_num}. PDF has {total_pages} pages.")
     
     pdf_writer = PdfWriter()
     
-    # Add requested pages (convert 1-indexed to 0-indexed)
     for page_num in pages_to_keep:
         pdf_writer.add_page(pdf_reader.pages[page_num - 1])
     
-    # Write output PDF
     output_path = get_output_path(output_name)
     with open(output_path, "wb") as output_file:
         pdf_writer.write(output_file)
@@ -280,20 +254,17 @@ def delete_pages(file_name: str, pages_to_delete: List[int], output_name: str = 
     pdf_reader = PdfReader(input_path)
     total_pages = len(pdf_reader.pages)
     
-    # Validate page numbers
     for page_num in pages_to_delete:
         if page_num < 1 or page_num > total_pages:
             raise ValueError(f"Invalid page number: {page_num}. PDF has {total_pages} pages.")
     
     pdf_writer = PdfWriter()
     
-    # Add all pages EXCEPT the ones to delete
     pages_to_delete_set = set(pages_to_delete)
     for page_num in range(1, total_pages + 1):
         if page_num not in pages_to_delete_set:
             pdf_writer.add_page(pdf_reader.pages[page_num - 1])
     
-    # Write output PDF
     output_path = get_output_path(output_name)
     with open(output_path, "wb") as output_file:
         pdf_writer.write(output_file)
@@ -351,7 +322,6 @@ def compress_pdf(file_name: str, output_name: str = "compressed_output.pdf", pre
         )
         return output_name
 
-    # Fallback: PyPDF basic compression
     pdf_reader = PdfReader(input_path)
     pdf_writer = PdfWriter()
     for page in pdf_reader.pages:
@@ -363,9 +333,6 @@ def compress_pdf(file_name: str, output_name: str = "compressed_output.pdf", pre
     return output_name
 
 
-# ============================================
-# PDF TO DOCX CONVERSION
-# ============================================
 def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> str:
     """
     Convert a PDF file to DOCX format with best-effort formatting while staying low-RAM.
@@ -375,7 +342,6 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
     - For larger PDFs (or if `pdf2docx` fails), use a low-RAM PyMuPDF span-based writer that
       preserves line breaks and basic styling (bold/italic/font size) better than plain text.
     """
-    # Lazy import heavy libraries
     fitz = _get_fitz()
     
     ensure_temp_dirs()
@@ -393,7 +359,6 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
             "Install with: pip install python-docx"
         )
 
-    # Helper: low-RAM, layout-aware DOCX writer
     def _low_ram_layout_docx() -> None:
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT  # type: ignore
 
@@ -409,11 +374,9 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
 
             blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
             for block in blocks:
-                # 0 = text, 1 = image
                 if not isinstance(block, dict) or block.get("type") != 0:
                     continue
 
-                # Basic alignment heuristic from bbox
                 bbox = block.get("bbox") or None
                 align = WD_PARAGRAPH_ALIGNMENT.LEFT
                 try:
@@ -437,7 +400,6 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
                         text = span.get("text") or ""
                         if not text:
                             continue
-                        # Sanitize text to remove XML-incompatible characters
                         text = _sanitize_text_for_xml(text)
                         if not text.strip() and not text:
                             continue
@@ -447,21 +409,17 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
                         run.italic = "italic" in font_name or "oblique" in font_name
                         try:
                             sz = float(span.get("size") or 11)
-                            # Clamp to a sane range to avoid huge fonts.
                             run.font.size = Pt(max(8, min(28, int(round(sz)))))
                         except Exception:
                             pass
 
-                    # Preserve line breaks inside a block
                     if li != len(lines) - 1:
                         try:
                             p.add_run().add_break()
                         except Exception:
                             pass
 
-                # Add a small separation between blocks
                 if p.text.strip() == "":
-                    # Avoid tons of empty paragraphs
                     continue
 
             if page_index != pdf.page_count - 1:
@@ -470,7 +428,6 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
         pdf.close()
         out.save(output_path)
 
-    # Decide whether to attempt pdf2docx (higher fidelity, higher risk)
     try:
         size_mb = os.path.getsize(input_path) / (1024 * 1024)
     except Exception:
@@ -493,7 +450,6 @@ def pdf_to_docx(file_name: str, output_name: str = "converted_output.docx") -> s
             cv.close()
             return output_name
         except Exception:
-            # Fall back to low-RAM layout mode
             try:
                 try:
                     cv.close()
@@ -521,8 +477,6 @@ def docx_to_pdf(file_name: str, output_name: str = "converted_output.pdf") -> st
         raise FileNotFoundError(f"File not found: {file_name}")
 
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
-    # If LibreOffice is not available (common on minimal containers), fall back
-    # to a text-only PDF render (medium accuracy, low RAM).
     if not soffice:
         try:
             from docx import Document  # type: ignore
@@ -569,7 +523,6 @@ def docx_to_pdf(file_name: str, output_name: str = "converted_output.pdf") -> st
         max_width = page_w - 2 * margin
         for para in doc.paragraphs:
             text = (para.text or "").strip()
-            # Preserve blank lines
             if not text:
                 y -= line_h
                 if y < margin:
@@ -591,7 +544,6 @@ def docx_to_pdf(file_name: str, output_name: str = "converted_output.pdf") -> st
 
     out_dir = os.path.abspath("outputs")
 
-    # LibreOffice writes output name based on input; we rename after.
     try:
         subprocess.run(
             [
@@ -616,7 +568,6 @@ def docx_to_pdf(file_name: str, output_name: str = "converted_output.pdf") -> st
     base = os.path.splitext(os.path.basename(file_name))[0]
     produced = os.path.join(out_dir, f"{base}.pdf")
     if not os.path.exists(produced):
-        # LibreOffice may sanitize the filename; best-effort fallback.
         raise Exception("DOCX → PDF conversion failed: output PDF not produced.")
 
     final_path = get_output_path(output_name)
@@ -625,15 +576,11 @@ def docx_to_pdf(file_name: str, output_name: str = "converted_output.pdf") -> st
             os.remove(final_path)
         os.replace(produced, final_path)
     except Exception:
-        # If rename fails, keep produced.
         return os.path.basename(produced)
 
     return output_name
 
 
-# ============================================
-# COMPRESS TO TARGET SIZE (EXPERIMENTAL)
-# ============================================
 def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "compressed_target_output.pdf") -> str:
     """
     Compress a PDF to a target size (in MB) using Ghostscript.
@@ -659,7 +606,6 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
     best_size_mb = original_size_mb
     best_quality = None
     
-    # Try different quality settings until under target
     qualities = ["screen", "ebook", "printer", "prepress"]
     for quality in qualities:
         try:
@@ -676,16 +622,13 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
             size_mb = os.path.getsize(output_path) / (1024 * 1024)
             if size_mb <= target_mb:
                 return output_name
-            # Track best compression achieved
             if size_mb < best_size_mb:
                 best_size_mb = size_mb
                 best_quality = quality
         except Exception as e:
             continue
     
-    # If we couldn't reach target but got some compression, return best result with info
     if best_quality:
-        # Re-compress with best quality setting
         subprocess.run([
             gs_executable,
             "-sDEVICE=pdfwrite",
@@ -696,15 +639,11 @@ def compress_pdf_to_target(file_name: str, target_mb: int, output_name: str = "c
             f"-sOutputFile={output_path}",
             input_path
         ], check=True)
-        # Return with special marker that will be caught
         raise Exception(f"PARTIAL_SUCCESS:Compressed from {original_size_mb:.1f}MB to {best_size_mb:.1f}MB (target was {target_mb}MB). Maximum compression reached.")
     
     raise Exception(f"Could not compress {file_name}. The PDF may already be optimized.")
 
 
-# ============================================
-# ADDITIONAL PDF OPERATIONS
-# ============================================
 
 def rotate_pdf(
     file_name: str,
@@ -743,7 +682,6 @@ def rotate_pdf(
     writer = PdfWriter()
     for idx, page in enumerate(reader.pages, start=1):
         if idx in pages_set:
-            # pypdf rotation API differs by version
             if hasattr(page, "rotate_clockwise"):
                 page = page.rotate_clockwise(degrees)
             elif hasattr(page, "rotate"):
@@ -774,7 +712,6 @@ def reorder_pdf(file_name: str, new_order: List[int] | str, output_name: str = "
     reader = PdfReader(input_path)
     total_pages = len(reader.pages)
     
-    # Handle "reverse" command
     if new_order == "reverse":
         new_order = list(range(total_pages, 0, -1))  # e.g., [5, 4, 3, 2, 1] for 5 pages
 
@@ -835,12 +772,10 @@ def watermark_pdf(
             c.rotate(float(angle or 0))
         except Exception:
             c.rotate(0)
-        # Font size based on page diagonal-ish
         base = min(w, h)
         font_size = max(18, min(72, int(base / 10)))
         c.setFont("Helvetica", font_size)
         c.setFillColorRGB(0, 0, 0)
-        # Centered text
         c.drawCentredString(0, 0, text)
         c.restoreState()
         c.showPage()
@@ -993,7 +928,6 @@ def remove_blank_pages(
         img = np.frombuffer(pix.samples, dtype=np.uint8)
         if img.size == 0:
             continue
-        # Count non-white pixels
         nonwhite = np.count_nonzero(img < 245)
         ratio = nonwhite / float(img.size)
         if ratio >= float(blank_ratio_threshold):
@@ -1090,7 +1024,6 @@ def enhance_scan(
 
     out = fitz.open()
 
-    # scale matrix for desired DPI (PDF default 72 dpi)
     scale = max(1.0, float(dpi) / 72.0)
     mat = fitz.Matrix(scale, scale)
 
@@ -1110,13 +1043,11 @@ def enhance_scan(
             10,
         )
 
-        # Encode to JPEG to keep PDF size reasonable
         ok, jpg = cv2.imencode(".jpg", bw, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         if not ok:
             raise Exception("Scan enhancement failed during JPEG encoding.")
         jpg_bytes = jpg.tobytes()
 
-        # Create a page matching image size (in points)
         w_pt = pix.width * (72.0 / float(dpi))
         h_pt = pix.height * (72.0 / float(dpi))
         out_page = out.new_page(width=w_pt, height=h_pt)
@@ -1218,7 +1149,6 @@ def images_to_pdf(
 
     doc = fitz.open()
     
-    # Standard A4 page size in points (72 points = 1 inch)
     A4_WIDTH = 595  # ~8.27 inches
     A4_HEIGHT = 842  # ~11.69 inches
 
@@ -1229,37 +1159,30 @@ def images_to_pdf(
 
         pix = fitz.Pixmap(input_path)
         
-        # Convert CMYK/alpha to RGB when needed
         if pix.n >= 5:
             pix = fitz.Pixmap(fitz.csRGB, pix)
         
         orig_width, orig_height = pix.width, pix.height
         
-        # Resize if image is too large (reduces memory and PDF size)
         if orig_width > max_dimension or orig_height > max_dimension:
             scale = min(max_dimension / orig_width, max_dimension / orig_height)
             new_width = int(orig_width * scale)
             new_height = int(orig_height * scale)
-            # Create scaled pixmap using transformation matrix
             mat = fitz.Matrix(scale, scale)
             pix = fitz.Pixmap(pix, 0, 1)  # Remove alpha if present
-            # Re-read and scale
             pix = fitz.Pixmap(input_path)
             if pix.n >= 5:
                 pix = fitz.Pixmap(fitz.csRGB, pix)
         else:
             new_width, new_height = orig_width, orig_height
         
-        # Determine page orientation based on image aspect ratio
         img_is_landscape = new_width > new_height
         
-        # Use A4 size, rotate for landscape images
         if img_is_landscape:
             page_width, page_height = A4_HEIGHT, A4_WIDTH  # Landscape A4
         else:
             page_width, page_height = A4_WIDTH, A4_HEIGHT  # Portrait A4
         
-        # Calculate scale to fit image on page with margins
         margin = 20  # Small margin
         avail_width = page_width - 2 * margin
         avail_height = page_height - 2 * margin
@@ -1271,18 +1194,15 @@ def images_to_pdf(
         final_width = new_width * fit_scale
         final_height = new_height * fit_scale
         
-        # Center the image on the page
         x_offset = (page_width - final_width) / 2
         y_offset = (page_height - final_height) / 2
         
         page = doc.new_page(width=page_width, height=page_height)
         img_rect = fitz.Rect(x_offset, y_offset, x_offset + final_width, y_offset + final_height)
         
-        # Insert image with JPEG compression for smaller file size
         page.insert_image(img_rect, filename=input_path)
 
     output_path = get_output_path(output_name)
-    # Save with garbage collection and compression
     doc.save(output_path, garbage=4, deflate=True)
     doc.close()
     return output_name
@@ -1338,7 +1258,6 @@ def ocr_pdf(
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"File not found: {file_name}")
 
-    # Use the CLI to enforce timeouts and to avoid excessive in-process memory.
     ocrmypdf_cmd = shutil.which("ocrmypdf")
     if not ocrmypdf_cmd:
         raise Exception(
@@ -1346,7 +1265,6 @@ def ocr_pdf(
             "Install with: pip install ocrmypdf  (and install Tesseract on your system)."
         )
 
-    # Free-tier safe defaults
     default_dpi = 200
     chunk_pages = 25
 
@@ -1376,7 +1294,6 @@ def ocr_pdf(
 
     output_path = get_output_path(output_name)
 
-    # Chunking to avoid memory spikes on long PDFs
     if total_pages > chunk_pages:
         temp_outputs: list[str] = []
         try:
@@ -1391,12 +1308,10 @@ def ocr_pdf(
                 with open(chunk_in, "wb") as f:
                     w.write(f)
 
-                # Timeout scales mildly with pages
                 timeout_s = 180 + (end - start) * 20
                 _run_ocr(chunk_in, chunk_out, timeout_s=timeout_s)
                 temp_outputs.append(chunk_out)
 
-            # Merge chunks
             merged = PdfWriter()
             for p in temp_outputs:
                 r = PdfReader(p)
@@ -1407,7 +1322,6 @@ def ocr_pdf(
         except Exception as e:
             raise Exception(f"OCR failed: {e}")
         finally:
-            # Cleanup temp files
             try:
                 for start in range(0, total_pages, chunk_pages):
                     end = min(total_pages, start + chunk_pages)
@@ -1422,7 +1336,6 @@ def ocr_pdf(
 
         return output_name
 
-    # Single shot
     try:
         _run_ocr(input_path, output_path, timeout_s=240 + total_pages * 20)
     except Exception as e:

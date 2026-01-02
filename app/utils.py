@@ -5,17 +5,12 @@ Shared utility functions to reduce code duplication across modules.
 import re
 from difflib import SequenceMatcher
 
-# ============================================
-# PRECOMPILED REGEX PATTERNS (Performance Optimization)
-# ============================================
 
-# Multi-operation detection patterns
 RE_EXPLICIT_ORDER = re.compile(r"\b(and then|then|after that|afterwards|before that|before|first|second|finally)\b", re.IGNORECASE)
 RE_AND_THEN = re.compile(r"\b(and then|then)\b", re.IGNORECASE)
 RE_BEFORE = re.compile(r"\bbefore\b", re.IGNORECASE)
 RE_AFTER = re.compile(r"\bafter\b", re.IGNORECASE)
 
-# Operation family patterns
 RE_MERGE_OPS = re.compile(r"\bmerge|combine|join\b", re.IGNORECASE)
 RE_SPLIT_OPS = re.compile(r"\bsplit|extract|keep\b", re.IGNORECASE)
 RE_DELETE_OPS = re.compile(r"\bdelete|remove\b", re.IGNORECASE)
@@ -28,19 +23,14 @@ RE_PAGE_NUMBERS_OPS = re.compile(r"\bpage\s*numbers?\b", re.IGNORECASE)
 RE_OCR_OPS = re.compile(r"\bocr\b", re.IGNORECASE)
 RE_IMAGES_OPS = re.compile(r"\bimages?\b|\bimg\b|\bpng\b|\bjpg\b|\bjpeg\b", re.IGNORECASE)
 
-# Page range detection
 RE_PAGE_WITH_DIGIT = re.compile(r"\bpages?\b\s*\d", re.IGNORECASE)
 RE_DIGIT_RANGE = re.compile(r"\b\d+\s*-\s*\d+\b")
 RE_DIGIT_COMMA = re.compile(r"\b\d+\s*,\s*\d+\b")
 
-# Slot detection patterns
 RE_ROTATE_DEGREES = re.compile(r"(-?\d+)\s*(deg|degree|degrees)?", re.IGNORECASE)
 RE_COMPRESS_SIZE = re.compile(r"(\d+)\s*(mb|kb)", re.IGNORECASE)
 RE_PAGE_RANGES = re.compile(r"\d+(\s*-\s*\d+)?(\s*,\s*\d+(\s*-\s*\d+)?)*")
 
-# ============================================
-# STRING UTILITIES
-# ============================================
 
 def normalize_whitespace(s: str) -> str:
     """Normalize whitespace: strip and collapse multiple spaces into one."""
@@ -63,12 +53,10 @@ def fuzzy_match_string(query: str, candidates: list[str], threshold: float = 0.8
     
     query_lower = query.lower()
     
-    # Check for exact match first (fast path)
     for candidate in candidates:
         if candidate.lower() == query_lower:
             return candidate
     
-    # Fuzzy match
     best = None
     best_score = 0.0
     for candidate in candidates:
@@ -100,9 +88,6 @@ def fuzzy_match_keyword(word: str, keywords: list[str], threshold: float = 0.86)
     return best if best and best_score >= threshold else word
 
 
-# ============================================
-# COMMON KEYWORD LISTS (cached)
-# ============================================
 
 OPERATION_KEYWORDS = frozenset([
     "compress", "split", "extract", "keep", "merge", "combine", "join",

@@ -4,7 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================
    DESIGN SYSTEM: Professional SaaS Theme
    - Deep neutral backgrounds with glassmorphism
    - Subtle layered surfaces for depth
@@ -13,24 +12,20 @@
    ============================================ */
 
 :root {
-  /* Background layers (darkest to lightest) */
   --bg-base: #0a0f14;
   --bg-surface: #111820;
   --bg-elevated: #161f2a;
   --bg-overlay: #1c2633;
   
-  /* Glass effect colors */
   --glass-bg: rgba(22, 31, 42, 0.7);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.03);
   
-  /* Text hierarchy */
   --text-primary: #e8edf3;
   --text-secondary: #9ca8b8;
   --text-muted: #6b7a8a;
   --text-disabled: #4a5563;
   
-  /* Accent colors (professional, muted) */
   --accent-primary: #3b82f6;
   --accent-primary-soft: rgba(59, 130, 246, 0.15);
   --accent-success: #10b981;
@@ -40,7 +35,6 @@
   --accent-error: #ef4444;
   --accent-error-soft: rgba(239, 68, 68, 0.12);
   
-  /* Border & shadow */
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.14);
@@ -50,14 +44,12 @@
   --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25), 0 0 1px rgba(255, 255, 255, 0.05);
   
-  /* Spacing scale */
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 1rem;
   --space-lg: 1.5rem;
   --space-xl: 2rem;
   
-  /* Border radius */
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 0.875rem;
@@ -79,7 +71,6 @@
     line-height: 1.6;
   }
   
-  /* Improved scrollbar for webkit */
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -104,14 +95,12 @@
     transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  /* Selection highlight */
   ::selection {
     background: rgba(59, 130, 246, 0.3);
     color: #fff;
   }
 }
 
-/* ============================================
    GLASSMORPHISM UTILITIES
    ============================================ */
 
@@ -139,7 +128,6 @@
     inset 0 1px 0 var(--glass-highlight);
 }
 
-/* ============================================
    HOVER EFFECTS
    ============================================ */
 
@@ -173,7 +161,6 @@
   transform: scale(0.98);
 }
 
-/* Interactive element hover states */
 .interactive {
   position: relative;
   overflow: hidden;
@@ -197,7 +184,6 @@
   opacity: 1;
 }
 
-/* Button shine effect on hover */
 .btn-shine {
   position: relative;
   overflow: hidden;
@@ -224,11 +210,9 @@
   transform: translateX(100%);
 }
 
-/* ============================================
    SUBTLE BACKGROUND EFFECTS
    ============================================ */
 
-/* Cursor glow - only on desktop with GPU */
 @media (hover: hover) and (min-width: 768px) {
   .cursor-glow {
     position: fixed;
@@ -246,14 +230,12 @@
   }
 }
 
-/* Hide cursor glow on mobile/touch devices */
 @media (hover: none), (max-width: 767px) {
   .cursor-glow {
     display: none;
   }
 }
 
-/* ============================================
    ANIMATIONS (Professional, Subtle)
    ============================================ */
 
@@ -351,7 +333,6 @@
   }
 }
 
-/* ============================================
    UTILITY CLASSES
    ============================================ */
 
@@ -419,12 +400,10 @@
     opacity: 1;
   }
 
-  /* Focus ring utility */
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent;
   }
 
-  /* Reduce motion for accessibility and performance */
   @media (prefers-reduced-motion: reduce) {
     .animate-fade-slide,
     .shimmer::before,
@@ -440,11 +419,9 @@
   }
 }
 
-/* ============================================
    COMPONENT STYLES
    ============================================ */
 
-/* Progress bar */
 .progress-bar {
   height: 4px;
   background: rgba(255, 255, 255, 0.08);
@@ -459,7 +436,6 @@
   transition: width 300ms ease-out;
 }
 
-/* Mobile-specific optimizations */
 @media (max-width: 767px) {
   :root {
     --radius-xl: 1rem;

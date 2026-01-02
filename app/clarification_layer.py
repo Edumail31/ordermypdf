@@ -29,7 +29,6 @@ from app.llm_output_handler import (
     UIResponseType
 )
 
-# 40K Pattern Resolution imports (NON-BREAKING - only adds new capability)
 try:
     from app.one_flow_resolver import OneFlowResolver, FileType as OneFlowFileType
     from app.pattern_matching import PatternMatcher, match_command
@@ -69,7 +68,6 @@ class ClarificationResult:
         self.options = options
 
 
-# Initialize error handler and command intelligence
 error_classifier = ErrorClassifier()
 command_intelligence = CommandIntelligence()
 resolution_pipeline = ResolutionPipeline()
@@ -106,7 +104,6 @@ def _rephrase_with_context(user_prompt: str, last_intent: Union['ParsedIntent', 
     if last_intent is None:
         return None
     
-    # Infer what the last operation was
     last_op = None
     if isinstance(last_intent, list) and last_intent:
         last_op = getattr(last_intent[-1], 'operation_type', None)
@@ -116,7 +113,6 @@ def _rephrase_with_context(user_prompt: str, last_intent: Union['ParsedIntent', 
     if not last_op:
         return None
     
-    # Map operation to human-readable description
     op_descriptions = {
         'compress': 'compressed the PDF',
         'compress_to_target': 'compressed the PDF to a target size',
@@ -134,32 +130,25 @@ def _rephrase_with_context(user_prompt: str, last_intent: Union['ParsedIntent', 
     
     last_action = op_descriptions.get(last_op, f"performed '{last_op}' on the file")
     
-    # Common short follow-ups and their likely intentions
     prompt_lower = user_prompt.lower().strip()
     
-    # "to docx" → "convert to docx" or "convert [result] to docx"
     if prompt_lower in ('to docx', 'as docx', 'to word', 'as word', 'docx', 'word'):
         return f"convert the result to docx"
     
-    # "to pdf" → "convert to pdf"
     if prompt_lower in ('to pdf', 'as pdf', 'pdf'):
         return f"convert the result to pdf"
     
-    # "to png/jpg/img" → "convert to images"
     if prompt_lower in ('to png', 'as png', 'png', 'to jpg', 'to jpeg', 'as jpg', 'jpg', 'jpeg', 'img', 'to img', 'to image', 'to images'):
         fmt = 'jpg' if 'jpg' in prompt_lower or 'jpeg' in prompt_lower else 'png'
         return f"convert the result to {fmt} images"
     
-    # "compress" / "smaller" / "make smaller" after prior operation
     if re.search(r'\b(compress|smaller|reduce|shrink)\b', prompt_lower):
         if last_op not in ('compress', 'compress_to_target'):
             return f"compress the result"
     
-    # "merge" / "combine" intent
     if re.search(r'\b(merge|combine|together)\b', prompt_lower) and last_op not in ('merge',):
         return f"merge all the files together"
     
-    # Generic fallback: if we can't infer, don't rephrase
     return None
 
 
@@ -175,7 +164,6 @@ def _is_explicitly_unsupported_request(prompt: str) -> bool:
 
     wants_convert = bool(re.search(r"\b(convert|change|export)\b", p))
 
-    # Unsupported conversions / formats.
     if wants_convert and re.search(r"\b(pptx?|powerpoint)\b", p):
         return True
     if wants_convert and re.search(r"\b(xlsx?|xls|excel|csv)\b", p):
@@ -183,13 +171,11 @@ def _is_explicitly_unsupported_request(prompt: str) -> bool:
     if wants_convert and re.search(r"\bhtml?\b", p):
         return True
 
-    # Unsupported security / signing workflows.
     if re.search(r"\b(password|encrypt|decrypt|unlock|protect)\b", p):
         return True
     if re.search(r"\b(sign|signature|e-?sign)\b", p):
         return True
 
-    # Unsupported edits that imply authoring/annotation.
     if re.search(r"\b(edit|annotate|highlight)\b", p) and "pdf" in p:
         return True
 
@@ -202,7 +188,6 @@ def _is_likely_unsupported_validation_error(error_msg: str) -> bool:
     if not e:
         return False
 
-    # Most common: invalid literal for operation_type.
     if "operation_type" in e and (
         "input should be" in e
         or "literal" in e
@@ -248,7 +233,6 @@ def _normalize_prompt_for_heuristics(user_prompt: str) -> str:
     This is only used for regex shortcuts and heuristics. The original prompt is still
     sent to the LLM to preserve full meaning.
     """
-    # Use cached keyword list and optimized fuzzy matching
     return re.sub(r"[A-Za-z]{2,}", lambda m: fuzzy_match_keyword(m.group(0), ALL_NORMALIZE_KEYWORDS), user_prompt)
 
 
@@ -256,11 +240,9 @@ def _looks_like_multi_operation_prompt(user_prompt: str) -> bool:
     """Heuristic: if prompt appears to request 2+ ops (or uses explicit sequencing), don't short-circuit to a single-op regex."""
     prompt = _normalize_prompt_for_heuristics(user_prompt).lower()
 
-    # Explicit sequencing words are a strong indicator (use precompiled regex)
     if RE_EXPLICIT_ORDER.search(prompt):
         return True
 
-    # Count how many distinct operation families are mentioned (use precompiled patterns)
     op_hits = 0
     if RE_MERGE_OPS.search(prompt):
         op_hits += 1
@@ -279,7 +261,6 @@ def _looks_like_multi_operation_prompt(user_prompt: str) -> bool:
 
 
 def _options_for_pages_question(prefix: str) -> list[str]:
-    # Keep it short and runnable.
     return [
         f"{prefix} pages 1",
         f"{prefix} pages 1-2",
@@ -290,7 +271,6 @@ def _options_for_pages_question(prefix: str) -> list[str]:
 
 def _extract_page_range_tokens(prompt: str) -> bool:
     p = (prompt or "").lower()
-    # Simple signal: any digit plus 'page'/'pages' or a raw range like 2-5 (use precompiled patterns)
     return bool(RE_PAGE_WITH_DIGIT.search(p) or RE_DIGIT_RANGE.search(p) or RE_DIGIT_COMMA.search(p))
 
 
@@ -304,7 +284,6 @@ def _split_two_step_explicit_order(user_prompt: str) -> tuple[str, str] | None:
     if not s:
         return None
 
-    # Use precompiled patterns for better performance
     m = RE_AND_THEN.search(s)
     if m:
         parts = RE_AND_THEN.split(s, maxsplit=1)
@@ -314,7 +293,6 @@ def _split_two_step_explicit_order(user_prompt: str) -> tuple[str, str] | None:
             if a and b:
                 return a, b
 
-    # "A before B" means A first.
     m = RE_BEFORE.search(s)
     if m:
         parts = RE_BEFORE.split(s, maxsplit=1)
@@ -324,7 +302,6 @@ def _split_two_step_explicit_order(user_prompt: str) -> tuple[str, str] | None:
             if a and b:
                 return a, b
 
-    # "A after B" means B first.
     m = RE_AFTER.search(s)
     if m:
         parts = RE_AFTER.split(s, maxsplit=1)
@@ -369,12 +346,10 @@ def _fallback_parse_multi_step_pipeline(user_prompt: str, file_names: list[str])
     if not s:
         return None
 
-    # Prefer splitting into ALL steps when 'then' is present (use precompiled pattern)
     if RE_AND_THEN.search(s):
         parts = RE_AND_THEN.split(s)
         steps = [p.strip(" ,.;") for p in parts if p.strip(" ,.;")]
     else:
-        # Handle before/after (2-step) when no 'then' is present.
         two = _split_two_step_explicit_order(s)
         if not two:
             return None
@@ -401,19 +376,15 @@ def _infer_compress_preset(user_prompt: str) -> str:
     """Infer a Ghostscript-like preset from qualitative wording."""
     prompt = _normalize_prompt_for_heuristics(user_prompt).lower()
 
-    # Strongest compression / smallest output
     if re.search(r"\b(very\s*tiny|tiny|as\s*small\s*as\s*possible|smallest|max(?:imum)?|strong(?:ly)?|a\s*lot)\b", prompt):
         return "screen"
 
-    # Light / minimal compression
     if re.search(r"\b(a\s*little|little\s*bit|a\s*bit|slight(?:ly)?|light(?:ly)?|minor)\b", prompt):
         return "printer"
 
-    # Prefer quality
     if re.search(r"\b(best\s*quality|highest\s*quality|minimal\s*compression|don\s*'?t\s*lose\s*quality)\b", prompt):
         return "prepress"
 
-    # Default
     return "ebook"
 
 
@@ -431,21 +402,14 @@ def _fix_common_connector_typos(text: str) -> str:
     
     s = text
     
-    # STAGE 1: Use ErrorClassifier for intelligent typo correction
-    # This catches more patterns than simple regex
-    # classify_typo returns Optional[str] - the corrected string or None
     typo_correction = error_classifier.classify_typo(s)
     if typo_correction:
         s = typo_correction
     
-    # STAGE 2: Use ErrorClassifier for shorthand expansion
-    # Maps common shorthand like "to docx" → "convert to docx"
-    # classify_shorthand returns Optional[str] - the expanded string or None
     shorthand_correction = error_classifier.classify_shorthand(s)
     if shorthand_correction:
         s = shorthand_correction
     
-    # STAGE 3: Handle connector typos (these are simple enough to regex)
     s = re.sub(r"\badn\b", "and", s, flags=re.IGNORECASE)
     s = re.sub(r"\bn\b", "and", s, flags=re.IGNORECASE)
     s = re.sub(r"\bthne\b", "then", s, flags=re.IGNORECASE)
@@ -472,7 +436,6 @@ def _canonicalize_clause(clause: str) -> str:
         return s
     lower = s.lower().strip()
 
-    # Avoid nonsense like "compress 90 degrees" (degrees belong to rotate, not compress).
     if "compress" in lower and re.search(r"\b\d+\s*degrees?\b", lower):
         s = re.sub(r"\b\d+\s*degrees?\b", "", s, flags=re.IGNORECASE)
         s = re.sub(r"\s+", " ", s).strip(" ,.;")
@@ -486,7 +449,6 @@ def _canonicalize_clause(clause: str) -> str:
     if lower == "ocr":
         return "ocr this"
 
-    # Rotate without explicit degrees: default to 90 (per spec)
     if re.search(r"\b(rotate|turn|straight|flip)\b", lower) and not re.search(r"-?\d+", lower):
         if re.search(r"\bflip\b", lower):
             return "rotate 180 degrees"
@@ -537,12 +499,10 @@ def _split_clauses_no_order(user_prompt: str) -> list[str]:
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
         return []
-    # If explicit order words exist, don't split here.
     if _has_explicit_order_words(s):
         return []
 
     parts: list[str] = []
-    # First split by comma, then by ' and '.
     for chunk in [c.strip() for c in s.split(",") if c.strip()]:
         sub = re.split(r"\band\b", chunk, flags=re.IGNORECASE)
         for p in sub:
@@ -550,14 +510,12 @@ def _split_clauses_no_order(user_prompt: str) -> list[str]:
             if p:
                 parts.append(p)
 
-    # Cap to prevent crazy splits.
     return parts[:6]
 
 
 def _clause_priority(clause: str, file_names: list[str]) -> int:
     """Lower runs earlier."""
     c = (clause or "").lower()
-    # Hard-first
     if re.search(r"\bimages?_to_pdf\b|\b(images?)\s*(to|into)\s*pdf\b", c):
         return 0
     if re.search(r"\b(merge|combine|join)\b", c) and len(file_names) >= 2:
@@ -565,7 +523,6 @@ def _clause_priority(clause: str, file_names: list[str]) -> int:
     if re.search(r"\bocr\b", c):
         return 2
 
-    # Structural edits
     if re.search(r"\b(delete|remove)\b", c):
         return 10
     if re.search(r"\b(split|extract|keep)\b", c):
@@ -575,17 +532,14 @@ def _clause_priority(clause: str, file_names: list[str]) -> int:
     if re.search(r"\brotate\b|\bturn\b|\bstraight\b|\bflip\b", c):
         return 13
 
-    # Decorations
     if re.search(r"\bwatermark\b", c):
         return 20
     if re.search(r"\bpage\s*numbers?\b", c):
         return 21
 
-    # Compression generally last among PDF-preserving ops
     if re.search(r"\bcompress\b", c):
         return 30
 
-    # Terminal outputs (must be last)
     if re.search(r"\b(convert|docx|word)\b", c):
         return 90
     if re.search(r"\b(png|jpg|jpeg|images?)\b", c):
@@ -619,14 +573,12 @@ def _auto_order_multi_op_no_order(user_prompt: str, file_names: list[str]) -> st
 
     normalized = [_canonicalize_clause(c) for c in clauses]
 
-    # If request implies multiple final outputs, we must ask which one.
     terminals = {}
     for c in normalized:
         t = _terminal_type(c)
         if t:
             terminals[t] = c
     if len(terminals) >= 2:
-        # Provide runnable options by picking one terminal and dropping the others.
         options: list[str] = []
         for t, clause in terminals.items():
             others = [x for x in normalized if _terminal_type(x) is None]
@@ -661,11 +613,9 @@ def _extract_two_clauses_from_prompt(user_prompt: str) -> tuple[str, str] | None
     if not s:
         return None
 
-    # If user already provided ordering words, we shouldn't be here.
     if re.search(r"\b(and then|then|after|before|first|second|finally)\b", s, re.IGNORECASE):
         return None
 
-    # Common pattern: "A and B"
     parts = re.split(r"\band\b", s, maxsplit=1, flags=re.IGNORECASE)
     if len(parts) == 2:
         a = parts[0].strip(" ,.;")
@@ -673,7 +623,6 @@ def _extract_two_clauses_from_prompt(user_prompt: str) -> tuple[str, str] | None
         if a and b:
             return a, b
 
-    # Fallback: comma-separated
     parts = s.split(",", 1)
     if len(parts) == 2:
         a = parts[0].strip(" ,.;")
@@ -696,8 +645,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
     if _has_explicit_order_words(norm):
         return None
 
-    # If a required slot is missing (pages), ask that FIRST.
-    # This prevents repetitive "which first" loops when we still can't execute.
     if "split" in ops and not _extract_page_range_tokens(probe):
         return ClarificationResult(
             clarification="Which pages should I split/keep? (example: 1-3)",
@@ -711,8 +658,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
 
     clauses = _extract_two_clauses_from_prompt(probe)
 
-    # If user mixes rotate + compress with no explicit order, don't ask.
-    # Decide: rotate first, compress last.
     if "rotate" in ops and "compress" in ops and len(ops) == 2 and file_names:
         rotate_clause = "rotate 90 degrees"
         compress_clause = "compress"
@@ -732,8 +677,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
         if r1.intent and r2.intent and not isinstance(r1.intent, list) and not isinstance(r2.intent, list):
             return ClarificationResult(intent=[r1.intent, r2.intent])
 
-    # Strong defaults / forced ordering for compatibility
-    # - Merge must be first when multiple PDFs are present.
     if "merge" in ops and len(file_names) >= 2:
         if clauses:
             a, b = clauses
@@ -751,7 +694,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
             except Exception:
                 pass
 
-    # - OCR should happen first if requested implicitly/explicitly.
     if "ocr" in ops and clauses:
         a, b = clauses
         a = _canonicalize_clause(a)
@@ -768,7 +710,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
         except Exception:
             pass
 
-    # - If convert/images/extract is combined with compress, compress must be before convert/images.
     if "compress" in ops and ("convert" in ops or "images" in ops):
         if clauses:
             a, b = clauses
@@ -790,9 +731,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
             except Exception:
                 pass
 
-    # Default: when compress is combined with other operations and order is not explicit,
-    # run the other operation(s) first and compress LAST.
-    # This matches user expectation ("compress the final result") and avoids asking.
     if "compress" in ops and clauses:
         a, b = clauses
         a = _canonicalize_clause(a)
@@ -805,7 +743,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
             compress_clause = a if a_is_compress else b
             other_clause = b if a_is_compress else a
             ordered = f"{other_clause} and then {compress_clause}"
-            # Prefer deterministic parsing to avoid LLM rate limits.
             fallback = _fallback_parse_two_step_pipeline(ordered, file_names)
             if fallback:
                 return ClarificationResult(intent=fallback)
@@ -815,7 +752,6 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
             except Exception:
                 pass
 
-    # Otherwise: ask ONCE with clickable options (only for 2-clause prompts).
     if clauses:
         a, b = clauses
         a = _canonicalize_clause(a)
@@ -828,25 +764,21 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
             options=options,
         )
 
-    # If we can't split into two clauses but we see multiple ops, let the LLM handle it.
     return None
 
 
 def _order_options_from_context(user_prompt: str, question: str) -> list[str] | None:
-    # Prefer the actual prompt text because it contains parameters (e.g. rotate 90 degrees).
     clauses = _extract_two_clauses_from_prompt(user_prompt)
     if clauses:
         a, b = clauses
         return [f"{a} and then {b}", f"{b} and then {a}"]
 
-    # Try to extract from the question itself.
     q = (question or "").strip()
     m = re.search(r"first[^\n]*?['\"]([^'\"]+)['\"][^\n]*?\bor\b\s*([^?\n]+)\??", q, re.IGNORECASE)
     if m:
         a = m.group(1).strip(" ,.;")
         b = m.group(2).strip(" ,.;")
         if a and b:
-            # If the extracted bits are too short, don't emit.
             return [f"{a} and then {b}", f"{b} and then {a}"]
 
     return None
@@ -860,15 +792,12 @@ def _options_for_common_questions(question: str, user_prompt: str) -> list[str] 
     if _is_order_clarification(question):
         return _order_options_from_context(user_prompt, question)
 
-    # Rotate degrees
     if "rotate" in q and "degree" in q:
         return ["rotate 90 degrees", "rotate 180 degrees", "rotate 270 degrees"]
 
-    # Compress size
     if "compress" in q and ("mb" in q or "size" in q or "target" in q):
         return ["compress to 1mb", "compress to 2mb", "compress to 10mb"]
 
-    # Split / pages
     if ("split" in q or "pages" in q or "page" in q) and ("which" in q or "what" in q):
         return ["keep pages 1", "keep pages 1-3", "keep pages 1-5"]
 
@@ -886,18 +815,15 @@ def _try_3stage_resolution(user_prompt: str, file_names: list[str], allow_multi:
     - Stage 3: Still ambiguous → ask clarification
     """
     try:
-        # Build context from file names for better resolution
         context = {
             "uploaded_files": file_names,
             "file_count": len(file_names),
             "primary_file": file_names[0] if file_names else None,
         }
         
-        # Use 3-stage pipeline for resolution
         parsing, clarification = resolution_pipeline.resolve(user_prompt, context)
         
         if parsing and parsing.confidence >= 0.7:
-            # High confidence: parse directly into intent
             try:
                 intent = ai_parser.parse_intent(user_prompt, file_names)
                 if intent:
@@ -906,20 +832,16 @@ def _try_3stage_resolution(user_prompt: str, file_names: list[str], allow_multi:
                 pass
         
         if clarification:
-            # Need to ask user - return clarification question
             options = clarification.get("options", [])
             return ClarificationResult(
                 clarification=clarification.get("question", "Can you clarify?"),
                 options=options
             )
         
-        # If parsing succeeded but confidence is still medium, try to execute
         if parsing and parsing.intent:
             return ClarificationResult(intent=parsing.intent)
             
     except Exception as e:
-        # Silently fall back to hardcoded heuristics on any error
-        # This ensures backward compatibility
         pass
     
     return None
@@ -944,11 +866,9 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
         return None
     
     try:
-        # Get file type from primary file
         primary = file_names[0]
         ext = primary.rsplit(".", 1)[-1].lower() if "." in primary else "pdf"
         
-        # Map extension to OneFlowFileType
         type_map = {
             "pdf": OneFlowFileType.PDF,
             "docx": OneFlowFileType.DOCX,
@@ -959,12 +879,9 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
         }
         source_type = type_map.get(ext, OneFlowFileType.PDF)
         
-        # Step 1: Pattern Matching
         matcher = PatternMatcher()
         matched = matcher.match(user_prompt)
 
-        # If local matching is low-confidence, try an LLM phraser (NO user interruption).
-        # This is strictly non-breaking: if phraser isn't configured or fails, fall through.
         try:
             from app.config import settings
             if (
@@ -981,10 +898,8 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
             pass
         
         if not matched or matched.confidence < 0.5:
-            # Low confidence - fall through to existing logic
             return None
         
-        # Step 2: Validation
         validation_result = validate_pipeline(
             matched.operations,
             primary,
@@ -993,7 +908,6 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
         )
         
         if not validation_result.is_valid and validation_result.status.value == "ambiguous":
-            # Need disambiguation - generate button options
             generator = DisambiguationGenerator()
             response = generator.generate(
                 file_type=ext,
@@ -1002,27 +916,20 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
                 detected_size=f"{matched.target_size_mb}mb" if matched.target_size_mb else None
             )
             
-            # Return as clarification with options
             return ClarificationResult(
                 clarification=response.message,
                 options=[btn.label for btn in response.buttons]
             )
         
-        # If we have valid operations, let the existing logic handle it
-        # This is NON-BREAKING - we only use One-Flow for disambiguation
         if validation_result.is_valid and validation_result.adjusted_pipeline:
-            # Log for debugging
             import logging
             logging.getLogger(__name__).debug(
                 f"[ONE-FLOW] Validated pipeline: {validation_result.adjusted_pipeline}"
             )
         
-        # Fall through to let existing logic handle the actual parsing
-        # One-Flow is primarily for disambiguation
         return None
         
     except Exception as e:
-        # Silently fall back - NON-BREAKING
         import logging
         logging.getLogger(__name__).debug(f"[ONE-FLOW] Error: {e}")
         return None
@@ -1040,41 +947,24 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
     4. _try_one_flow_resolution: 40K+ pattern One-Flow Resolution (NEW - NON-BREAKING)
     """
     
-    # ============================================
-    # 40K ONE-FLOW RESOLUTION (NON-BREAKING)
-    # Try to use 40K+ pattern resolution for disambiguation
-    # Returns None to fall through on failure
-    # ============================================
     one_flow_result = _try_one_flow_resolution(user_prompt, file_names)
     if one_flow_result is not None:
         return one_flow_result
     
-    # Optional context from the UI: helps interpret very short replies.
-    # Also normalizes a few common corpus typos (e.g., compres/splt).
-    # NOW USES ERROR CLASSIFIER for intelligent correction
     user_prompt = _fix_common_connector_typos(user_prompt)
     prompt_for_match = _normalize_prompt_for_heuristics(user_prompt)
     prompt_compact = prompt_for_match.strip().lower()
 
-    # Corpus-required strict behavior: if the user clearly requests an unsupported feature,
-    # reply exactly with UNSUPPORTED_REPLY.
     if _is_explicitly_unsupported_request(prompt_for_match):
         return ClarificationResult(clarification=UNSUPPORTED_REPLY)
 
-    # ============================================
-    # VAGUE COMMAND DETECTION
-    # Catch commands like "do it", "why not", random text early
-    # Provide helpful options instead of letting them fail with 400
-    # ============================================
     def _is_vague_command(prompt: str) -> bool:
         """Detect vague/meaningless commands that need clarification."""
         p = (prompt or "").strip().lower()
         if not p:
             return True
-        # Very short commands without any operation keywords
         if len(p) < 3:
             return True
-        # Common vague phrases
         vague_patterns = [
             r"^do\s*(it|this|that)?$",
             r"^why\s*(not)?$",
@@ -1103,7 +993,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         for pattern in vague_patterns:
             if re.match(pattern, p):
                 return True
-        # Random gibberish detection - no recognizable words
         recognizable_words = [
             "merge", "combine", "join", "split", "extract", "keep", "delete", "remove",
             "compress", "reduce", "shrink", "small", "convert", "pdf", "docx", "word",
@@ -1117,7 +1006,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         return False
 
     if _is_vague_command(prompt_compact) and file_names:
-        # Provide helpful options based on file type
         primary = file_names[0]
         primary_lower = (primary or "").lower()
         
@@ -1151,11 +1039,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 options=["compress", "merge", "convert to pdf"]
             )
 
-    # ============================================
-    # HARDCODED REDUNDANCY & COMPATIBILITY GUARDS
-    # Per spec: Never throw generic errors. Skip, auto-fix, or block with clear message.
-    # Smart behavior: Convert valid cross-type operations automatically.
-    # ============================================
     if file_names:
         primary = file_names[0]
         primary_lower = (primary or "").lower()
@@ -1166,7 +1049,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         all_pdfs = all(f.lower().endswith('.pdf') for f in file_names)
         num_files = len(file_names)
         
-        # Detect user intent from prompt
         wants_to_image = bool(re.search(r"\b(to\s*img|to\s*image|to\s*images|to\s*png|to\s*jpe?g|as\s*png|as\s*jpe?g|export\s*(as\s*)?(png|jpe?g|images?))\b", prompt_compact))
         wants_to_pdf = bool(re.search(r"\b(to\s*pdf|as\s*pdf|convert\s*(to\s*)?pdf)\b", prompt_compact))
         wants_to_docx = bool(re.search(r"\b(to\s*docx|to\s*word|as\s*docx|as\s*word|convert\s*(to\s*)?(docx|word))\b", prompt_compact))
@@ -1184,18 +1066,14 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         wants_flatten = bool(re.search(r"\b(flatten|sanitize|optimize)\b", prompt_compact))
         wants_extract_text = bool(re.search(r"\b(extract\s*text|to\s*txt|as\s*txt|text\s*only|get\s*text)\b", prompt_compact))
         
-        # ========== MULTI-OPERATION COMBO DETECTION ==========
-        # Detect when user wants multiple operations at once
         num_operations = sum([
             wants_merge, wants_split, wants_delete_pages, wants_compress, wants_rotate,
             wants_watermark, wants_page_numbers, wants_ocr, wants_enhance, wants_flatten,
             wants_clean, wants_reorder, wants_to_image, wants_to_docx, wants_extract_text
         ])
         
-        # ========== PDF MULTI-OP PIPELINES ==========
         if is_pdf_file or all_pdfs:
             
-            # PDF + merge + compress → Merge all → Compress
             if wants_merge and wants_compress and all_pdfs and num_files >= 2:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1211,7 +1089,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + watermark → Merge → Watermark
             if wants_merge and wants_watermark and all_pdfs and num_files >= 2:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1229,7 +1106,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + OCR + compress → OCR → Compress
             if wants_ocr and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1245,7 +1121,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + enhance + OCR → Enhance → OCR
             if wants_enhance and wants_ocr and is_pdf_file:
                 return ClarificationResult(
                     intent=[
@@ -1260,7 +1135,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + enhance + compress → Enhance → Compress
             if wants_enhance and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1276,7 +1150,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + rotate + compress → Rotate → Compress
             if wants_rotate and wants_compress and is_pdf_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1297,7 +1170,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + flatten + compress → Flatten → Compress
             if wants_flatten and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1313,7 +1185,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + clean + compress → Clean → Compress
             if wants_clean and wants_compress and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1331,7 +1202,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + watermark + compress → Watermark → Compress
             if wants_watermark and wants_compress and is_pdf_file:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1350,7 +1220,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + page numbers + compress → Page numbers → Compress
             if wants_page_numbers and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1366,7 +1235,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + split + compress → Split → Compress
             if wants_split and wants_compress and is_pdf_file:
                 pages = _parse_page_ranges(user_prompt)
                 if pages:
@@ -1384,7 +1252,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + watermark + page numbers → Watermark → Page numbers
             if wants_watermark and wants_page_numbers and is_pdf_file:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1402,7 +1269,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + rotate + split → Rotate → Split
             if wants_rotate and wants_split and is_pdf_file:
                 pages = _parse_page_ranges(user_prompt)
                 degrees = 90
@@ -1424,7 +1290,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + merge + OCR → Merge → OCR
             if wants_merge and wants_ocr and all_pdfs and num_files >= 2:
                 return ClarificationResult(
                     intent=[
@@ -1439,7 +1304,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + enhance → Merge → Enhance
             if wants_merge and wants_enhance and all_pdfs and num_files >= 2:
                 return ClarificationResult(
                     intent=[
@@ -1454,7 +1318,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + flatten → Merge → Flatten
             if wants_merge and wants_flatten and all_pdfs and num_files >= 2:
                 return ClarificationResult(
                     intent=[
@@ -1469,7 +1332,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + page numbers → Merge → Page Numbers
             if wants_merge and wants_page_numbers and all_pdfs and num_files >= 2:
                 return ClarificationResult(
                     intent=[
@@ -1484,7 +1346,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + rotate → Merge → Rotate
             if wants_merge and wants_rotate and all_pdfs and num_files >= 2:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1504,7 +1365,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + clean → Merge → Clean
             if wants_merge and wants_clean and all_pdfs and num_files >= 2:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1521,7 +1381,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + OCR + flatten → OCR → Flatten
             if wants_ocr and wants_flatten and is_pdf_file:
                 return ClarificationResult(
                     intent=[
@@ -1536,7 +1395,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + OCR + page numbers → OCR → Page Numbers
             if wants_ocr and wants_page_numbers and is_pdf_file:
                 return ClarificationResult(
                     intent=[
@@ -1551,7 +1409,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + OCR + clean → OCR → Clean
             if wants_ocr and wants_clean and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1568,7 +1425,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + OCR + rotate → OCR → Rotate
             if wants_ocr and wants_rotate and is_pdf_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1588,7 +1444,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + clean + reorder → Clean → Reorder
             if wants_clean and wants_reorder and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1606,7 +1461,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + clean + flatten → Clean → Flatten
             if wants_clean and wants_flatten and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1623,7 +1477,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + page numbers + flatten → Page Numbers → Flatten
             if wants_page_numbers and wants_flatten and is_pdf_file:
                 return ClarificationResult(
                     intent=[
@@ -1638,7 +1491,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + watermark + flatten → Watermark → Flatten
             if wants_watermark and wants_flatten and is_pdf_file:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1656,7 +1508,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + rotate + reorder → Rotate → Reorder
             if wants_rotate and wants_reorder and is_pdf_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1677,9 +1528,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # ========== 3-STEP PDF PIPELINES ==========
             
-            # PDF + enhance + OCR + compress → Enhance → OCR → Compress
             if wants_enhance and wants_ocr and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1699,7 +1548,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + clean + OCR + compress → Clean → OCR → Compress
             if wants_clean and wants_ocr and wants_compress and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1721,7 +1569,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + clean + compress → Merge → Clean → Compress
             if wants_merge and wants_clean and wants_compress and all_pdfs and num_files >= 2:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1743,7 +1590,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + rotate + compress → Merge → Rotate → Compress
             if wants_merge and wants_rotate and wants_compress and all_pdfs and num_files >= 2:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1768,7 +1614,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + OCR + compress → Merge → OCR → Compress
             if wants_merge and wants_ocr and wants_compress and all_pdfs and num_files >= 2:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1788,7 +1633,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + OCR + page numbers + compress → OCR → Page Numbers → Compress
             if wants_ocr and wants_page_numbers and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1808,7 +1652,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + rotate + page numbers + compress → Rotate → Page Numbers → Compress
             if wants_rotate and wants_page_numbers and wants_compress and is_pdf_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -1833,7 +1676,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + merge + watermark + compress → Merge → Watermark → Compress
             if wants_merge and wants_watermark and wants_compress and all_pdfs and num_files >= 2:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1856,7 +1698,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # PDF + enhance + flatten + compress → Enhance → Flatten → Compress
             if wants_enhance and wants_flatten and wants_compress and is_pdf_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1876,7 +1717,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # PDF + clean + flatten + compress → Clean → Flatten → Compress (final pdf)
             if wants_clean and wants_flatten and wants_compress and is_pdf_file:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -1898,10 +1738,8 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # ========== IMAGE MULTI-OP PIPELINES ==========
         if is_image_file or all_images:
             
-            # Image(s) → DOCX: Images to PDF → PDF to DOCX
             if wants_to_docx and (is_image_file or all_images):
                 return ClarificationResult(
                     intent=[
@@ -1916,7 +1754,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + merge/combine + compress → Images to PDF → Compress
             if (wants_merge or wants_to_pdf) and wants_compress and all_images:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -1932,7 +1769,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + watermark → Images to PDF → Watermark
             if (wants_merge or wants_to_pdf) and wants_watermark and all_images:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -1950,7 +1786,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # Images + combine + page numbers → Images to PDF → Page numbers
             if (wants_merge or wants_to_pdf) and wants_page_numbers and all_images:
                 return ClarificationResult(
                     intent=[
@@ -1965,7 +1800,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + enhance + OCR → Enhance → OCR
             if wants_enhance and wants_ocr and is_image_file:
                 return ClarificationResult(
                     intent=[
@@ -1980,7 +1814,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + enhance + to PDF → Enhance → Images to PDF
             if wants_enhance and wants_to_pdf and is_image_file:
                 return ClarificationResult(
                     intent=[
@@ -1995,7 +1828,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + enhance + compress → Enhance → to PDF → Compress
             if wants_enhance and wants_compress and is_image_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2015,7 +1847,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Multiple images + combine + rotate → Images to PDF → Rotate
             if (wants_merge or wants_to_pdf) and wants_rotate and all_images:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -2035,7 +1866,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + OCR → Images to PDF → OCR
             if (wants_merge or wants_to_pdf) and wants_ocr and all_images:
                 return ClarificationResult(
                     intent=[
@@ -2050,7 +1880,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + flatten → Images to PDF → Flatten
             if (wants_merge or wants_to_pdf) and wants_flatten and all_images:
                 return ClarificationResult(
                     intent=[
@@ -2065,7 +1894,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + OCR + compress → OCR → Compress
             if wants_ocr and wants_compress and is_image_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2081,7 +1909,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + OCR + page numbers → OCR → Page Numbers
             if wants_ocr and wants_page_numbers and is_image_file:
                 return ClarificationResult(
                     intent=[
@@ -2096,7 +1923,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + OCR + flatten → OCR → Flatten
             if wants_ocr and wants_flatten and is_image_file:
                 return ClarificationResult(
                     intent=[
@@ -2111,7 +1937,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + enhance + rotate → Enhance → Rotate
             if wants_enhance and wants_rotate and is_image_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -2135,9 +1960,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # ========== 3-STEP IMAGE PIPELINES ==========
             
-            # Image + enhance + OCR + compress → Enhance → OCR → Compress
             if wants_enhance and wants_ocr and wants_compress and is_image_file:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2157,7 +1980,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + OCR + compress → Images to PDF → OCR → Compress
             if (wants_merge or wants_to_pdf) and wants_ocr and wants_compress and all_images:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2177,7 +1999,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + rotate + compress → Images to PDF → Rotate → Compress
             if (wants_merge or wants_to_pdf) and wants_rotate and wants_compress and all_images:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -2202,7 +2023,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Image + enhance + OCR + page numbers → Enhance → OCR → Page Numbers
             if wants_enhance and wants_ocr and wants_page_numbers and is_image_file:
                 return ClarificationResult(
                     intent=[
@@ -2221,7 +2041,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # Images + combine + watermark + compress → Images to PDF → Watermark → Compress
             if (wants_merge or wants_to_pdf) and wants_watermark and wants_compress and all_images:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -2244,7 +2063,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # Image + OCR + rotate + compress → OCR → Rotate → Compress
             if wants_ocr and wants_rotate and wants_compress and is_image_file:
                 degrees = 90
                 if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -2269,10 +2087,8 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # ========== DOCX MULTI-OP PIPELINES ==========
         if is_docx_file:
             
-            # DOCX → Images: DOCX to PDF → PDF to Images
             if wants_to_image and not wants_compress:
                 fmt = "png"
                 if re.search(r"\bjpe?g\b|\bjpg\b", prompt_for_match, re.IGNORECASE):
@@ -2290,7 +2106,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + to PDF + compress → DOCX to PDF → Compress
             if wants_to_pdf and wants_compress:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2306,7 +2121,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + to PDF + watermark → DOCX to PDF → Watermark
             if wants_to_pdf and wants_watermark:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -2324,7 +2138,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # DOCX + to PDF + page numbers → DOCX to PDF → Page numbers
             if wants_to_pdf and wants_page_numbers:
                 return ClarificationResult(
                     intent=[
@@ -2339,8 +2152,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + to images + compress (3-step) → DOCX→PDF→Images (can't compress images in zip)
-            # Just do the conversion
             if wants_to_image and wants_compress:
                 return ClarificationResult(
                     intent=[
@@ -2355,7 +2166,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + delete pages → DOCX to PDF → Delete
             if wants_delete_pages:
                 pages = _parse_page_ranges(user_prompt)
                 if pages:
@@ -2377,7 +2187,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         options=["delete page 1", "delete pages 2-3", "delete last page"]
                     )
             
-            # DOCX + to PDF + flatten → DOCX to PDF → Flatten
             if wants_to_pdf and wants_flatten:
                 return ClarificationResult(
                     intent=[
@@ -2392,7 +2201,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + clean + compress → DOCX to PDF → Clean → Compress
             if wants_clean and wants_compress:
                 is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
                 op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -2414,7 +2222,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + enhance + compress → DOCX to PDF → Enhance → Compress
             if wants_enhance and wants_compress:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2434,9 +2241,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # ========== 3-STEP DOCX PIPELINES ==========
             
-            # DOCX + to PDF + OCR + compress → DOCX to PDF → OCR → Compress
             if wants_to_pdf and wants_ocr and wants_compress:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2456,7 +2261,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + to PDF + watermark + compress → DOCX to PDF → Watermark → Compress
             if wants_to_pdf and wants_watermark and wants_compress:
                 m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(\S+)", user_prompt, re.IGNORECASE)
                 text = (m.group(1).strip() if m else "").strip("\"'")
@@ -2479,7 +2283,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                         ]
                     )
             
-            # DOCX + to PDF + page numbers + compress → DOCX to PDF → Page Numbers → Compress
             if wants_to_pdf and wants_page_numbers and wants_compress:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2499,7 +2302,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
             
-            # DOCX + to PDF + flatten + compress → DOCX to PDF → Flatten → Compress
             if wants_to_pdf and wants_flatten and wants_compress:
                 preset = _infer_compress_preset(user_prompt)
                 return ClarificationResult(
@@ -2519,23 +2321,17 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # ========== REDUNDANCY GUARDS (skip if already that format) ==========
         
-        # Image → to image (same format): Already an image
         if is_image_file and wants_to_image and not wants_to_pdf and not wants_compress:
             return ClarificationResult(clarification="This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.")
         
-        # PDF → to pdf (without any other operation): Already a PDF
         if is_pdf_file and wants_to_pdf and num_operations <= 1:
             return ClarificationResult(clarification="This file is already a PDF. Try 'compress', 'to docx', or 'to images' instead.")
         
-        # DOCX → to docx: Already a Word document
         if is_docx_file and wants_to_docx:
             return ClarificationResult(clarification="This file is already a Word document. Try 'to pdf' to convert it.")
         
-        # ========== AUTO-FIX: Smart cross-type conversions ==========
         
-        # Images + merge → auto-convert to images_to_pdf (combine images into PDF)
         if wants_merge and all_images and num_files >= 1:
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -2544,7 +2340,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # Single/multiple images + "to pdf" → images_to_pdf
         if wants_to_pdf and all_images:
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -2553,7 +2348,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # DOCX + "to pdf" → docx_to_pdf
         if wants_to_pdf and is_docx_file:
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -2562,9 +2356,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # Image + OCR → valid! OCR works on images (extract text from image)
         if wants_ocr and is_image_file:
-            # Convert image to PDF first, then OCR - or just process directly
             return ClarificationResult(
                 intent=ParsedIntent(
                     operation_type="ocr",
@@ -2572,7 +2364,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # Image + extract text → use OCR
         if wants_extract_text and is_image_file:
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -2581,7 +2372,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # Image + enhance → valid! Enhance scanned image
         if wants_enhance and is_image_file:
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -2590,10 +2380,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # ========== AUTO MULTI-STEP OPERATIONS ==========
-        # Instead of telling user "convert first, then...", just DO IT!
         
-        # DOCX + to image → DOCX→PDF→Images (2 steps, auto)
         if wants_to_image and is_docx_file:
             return ClarificationResult(
                 intent=[
@@ -2608,7 +2395,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # DOCX + split → DOCX→PDF→Split (need pages)
         if wants_split and is_docx_file:
             pages = _parse_page_ranges(user_prompt)
             if pages:
@@ -2630,7 +2416,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     options=["pages 1", "pages 1-3", "all pages as separate PDFs"]
                 )
         
-        # DOCX + compress → DOCX→PDF→Compress (auto)
         if wants_compress and is_docx_file:
             preset = _infer_compress_preset(user_prompt)
             return ClarificationResult(
@@ -2646,7 +2431,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # DOCX + watermark → DOCX→PDF→Watermark (need text)
         if wants_watermark and is_docx_file:
             m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(.+)$", user_prompt, re.IGNORECASE)
             text = (m.group(1).strip() if m else "").strip("\"'")
@@ -2669,7 +2453,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     options=["watermark CONFIDENTIAL", "watermark DRAFT"]
                 )
         
-        # DOCX + page numbers → DOCX→PDF→Page numbers (auto)
         if wants_page_numbers and is_docx_file:
             return ClarificationResult(
                 intent=[
@@ -2684,7 +2467,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # DOCX + reorder → DOCX→PDF→Reorder (need order)
         if wants_reorder and is_docx_file:
             m = re.search(r"\b(?:to|as)\b\s*([0-9,\s]+)", user_prompt, re.IGNORECASE)
             is_reverse = bool(re.search(r"\breverse\b", prompt_compact))
@@ -2721,7 +2503,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 options=["reverse all pages", "reorder to 2,1,3"]
             )
         
-        # DOCX + flatten → DOCX→PDF→Flatten (auto)
         if wants_flatten and is_docx_file:
             return ClarificationResult(
                 intent=[
@@ -2736,7 +2517,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # DOCX + clean → DOCX→PDF→Clean (auto)
         if wants_clean and is_docx_file:
             is_duplicate = bool(re.search(r"\bduplicate\b", prompt_compact))
             op_type = "remove_duplicate_pages" if is_duplicate else "remove_blank_pages"
@@ -2753,7 +2533,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # Image + watermark → Image→PDF→Watermark
         if wants_watermark and is_image_file:
             m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(.+)$", user_prompt, re.IGNORECASE)
             text = (m.group(1).strip() if m else "").strip("\"'")
@@ -2776,7 +2555,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     options=["watermark CONFIDENTIAL", "watermark DRAFT"]
                 )
         
-        # Image + page numbers → Image→PDF→Page numbers
         if wants_page_numbers and is_image_file:
             return ClarificationResult(
                 intent=[
@@ -2791,7 +2569,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # Image + compress → Image→PDF→Compress
         if wants_compress and is_image_file:
             preset = _infer_compress_preset(user_prompt)
             return ClarificationResult(
@@ -2807,7 +2584,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # Image + rotate → Image→PDF→Rotate
         if wants_rotate and is_image_file:
             degrees = 90  # default
             if re.search(r"\b(left|counter|anti)\b", prompt_compact):
@@ -2829,7 +2605,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # Image + flatten → Image→PDF→Flatten
         if wants_flatten and is_image_file:
             return ClarificationResult(
                 intent=[
@@ -2844,11 +2619,9 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # Multiple images + reorder → combine into PDF with specific order
         if wants_reorder and all_images and num_files > 1:
             is_reverse = bool(re.search(r"\breverse\b", prompt_compact))
             if is_reverse:
-                # Reverse the file order and combine
                 reversed_files = list(reversed(file_names))
                 return ClarificationResult(
                     intent=ParsedIntent(
@@ -2861,10 +2634,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 options=["combine as uploaded order", "reverse order"]
             )
         
-        # ========== NATURAL LANGUAGE SHORTCUTS ==========
-        # Handle common phrases users say without being explicit
         
-        # "email ready" / "send by email" → compress for email
         wants_email_ready = bool(re.search(r"\b(email\s*ready|for\s*email|send\s*(by\s*)?email|email\s*size)\b", prompt_compact))
         if wants_email_ready:
             if is_pdf_file:
@@ -2901,7 +2671,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "fix this scan" / "fix scanned" → enhance + OCR
         wants_fix_scan = bool(re.search(r"\b(fix\s*(this\s*)?scan|fix\s*scanned|clean\s*scan)\b", prompt_compact))
         if wants_fix_scan:
             if is_pdf_file:
@@ -2931,7 +2700,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "print ready" / "for printing" → flatten (remove fillable elements)
         wants_print_ready = bool(re.search(r"\b(print\s*ready|for\s*print|printing)\b", prompt_compact))
         if wants_print_ready:
             if is_pdf_file:
@@ -2962,7 +2730,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     )
                 )
         
-        # "make searchable" → OCR
         wants_searchable = bool(re.search(r"\b(make\s*searchable|searchable\s*pdf|text\s*searchable)\b", prompt_compact))
         if wants_searchable:
             if is_pdf_file or is_image_file:
@@ -2973,7 +2740,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     )
                 )
         
-        # "secure pdf" / "protect pdf" → flatten (removes editable content)
         wants_secure = bool(re.search(r"\b(secure|protect|sanitize)\s*pdf\b", prompt_compact))
         if wants_secure and is_pdf_file:
             return ClarificationResult(
@@ -2983,7 +2749,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
         
-        # "optimize file" / "optimize pdf" → Clean → Compress
         wants_optimize = bool(re.search(r"\b(optimize\s*(file|pdf)?|optimise)\b", prompt_compact))
         if wants_optimize:
             if is_pdf_file:
@@ -3015,7 +2780,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "final version" / "final pdf" → Clean → Flatten → Compress
         wants_final = bool(re.search(r"\b(final\s*(version|pdf|copy)?|finalize)\b", prompt_compact))
         if wants_final:
             if is_pdf_file:
@@ -3053,7 +2817,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "submission ready" / "college submission" → OCR → Compress
         wants_submission = bool(re.search(r"\b(submission\s*ready|college\s*submission|submit|assignment)\b", prompt_compact))
         if wants_submission:
             if is_pdf_file:
@@ -3100,7 +2863,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "archive ready" / "for archive" → Flatten → Compress
         wants_archive = bool(re.search(r"\b(archive\s*ready|for\s*archive|archiving)\b", prompt_compact))
         if wants_archive:
             if is_pdf_file:
@@ -3134,7 +2896,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "whatsapp size" / "whatsapp ready" → Compress (very strong)
         wants_whatsapp = bool(re.search(r"\b(whatsapp|wa)\s*(size|ready)?\b", prompt_compact))
         if wants_whatsapp:
             if is_pdf_file:
@@ -3171,7 +2932,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "govt submission" / "government" → OCR → Flatten
         wants_govt = bool(re.search(r"\b(govt|government)\s*(submission)?\b", prompt_compact))
         if wants_govt:
             if is_pdf_file:
@@ -3205,7 +2965,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "scan quality fix" / "improve scan quality" → Enhance → OCR
         wants_scan_quality = bool(re.search(r"\b(scan\s*quality|quality\s*fix|improve\s*scan)\b", prompt_compact))
         if wants_scan_quality:
             if is_pdf_file or is_image_file:
@@ -3222,7 +2981,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "make it neat" / "clean up" → Clean → Enhance
         wants_neat = bool(re.search(r"\b(make\s*it\s*neat|neat\s*up|tidy)\b", prompt_compact))
         if wants_neat:
             if is_pdf_file:
@@ -3239,7 +2997,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "make professional" → Clean → Flatten → Compress
         wants_professional = bool(re.search(r"\b(make\s*professional|professional\s*(copy|version)?|look\s*professional)\b", prompt_compact))
         if wants_professional:
             if is_pdf_file:
@@ -3277,7 +3034,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "sendable file" / "shareable" → Compress
         wants_sendable = bool(re.search(r"\b(sendable|shareable|share\s*ready)\b", prompt_compact))
         if wants_sendable:
             if is_pdf_file:
@@ -3314,7 +3070,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "convert and shrink" / "convert & compress" → Convert → Compress
         wants_convert_shrink = bool(re.search(r"\b(convert\s*(and|&)\s*(shrink|compress|smaller))\b", prompt_compact))
         if wants_convert_shrink:
             if is_docx_file:
@@ -3344,7 +3099,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "scan to pdf" → Images to PDF (if images) or just pass through
         wants_scan_to_pdf = bool(re.search(r"\bscan\s*to\s*pdf\b", prompt_compact))
         if wants_scan_to_pdf:
             if is_image_file or all_images:
@@ -3355,7 +3109,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     )
                 )
         
-        # "combine and fix" / "merge and clean" → Merge → Clean
         wants_combine_fix = bool(re.search(r"\b(combine\s*(and|&)\s*fix|merge\s*(and|&)\s*clean)\b", prompt_compact))
         if wants_combine_fix and all_pdfs and num_files >= 2:
             return ClarificationResult(
@@ -3371,7 +3124,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 ]
             )
         
-        # "combine and shrink" / "merge and compress" → Merge → Compress
         wants_combine_shrink = bool(re.search(r"\b(combine\s*(and|&)\s*(shrink|compress)|merge\s*(and|&)\s*(shrink|compress))\b", prompt_compact))
         if wants_combine_shrink:
             if all_pdfs and num_files >= 2:
@@ -3403,7 +3155,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "fix orientation" / "fix rotation" → Rotate
         wants_fix_orientation = bool(re.search(r"\b(fix\s*(orientation|rotation)|orientation\s*fix)\b", prompt_compact))
         if wants_fix_orientation:
             if is_pdf_file:
@@ -3427,7 +3178,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # "remove extra pages" / "extra pages" → Clean (remove blank)
         wants_remove_extra = bool(re.search(r"\b(remove\s*extra|extra\s*pages?|unwanted\s*pages?)\b", prompt_compact))
         if wants_remove_extra:
             if is_pdf_file:
@@ -3438,7 +3188,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     )
                 )
         
-        # "mobile optimized" / "for mobile" → Compress (strong)
         wants_mobile = bool(re.search(r"\b(mobile\s*(optimized?|ready)?|for\s*mobile|phone\s*size)\b", prompt_compact))
         if wants_mobile:
             if is_pdf_file:
@@ -3462,37 +3211,28 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     ]
                 )
         
-        # ========== TRULY INCOMPATIBLE (no workaround) ==========
         
-        # Split single image: Images don't have pages
         if wants_split and is_image_file:
             return ClarificationResult(clarification="Images don't have pages to split. Upload a multi-page PDF instead.")
         
-        # OCR: DOCX is already text-based
         if wants_ocr and is_docx_file:
             return ClarificationResult(clarification="DOCX is already text-based — no OCR needed!")
         
-        # Reorder single image: Need multiple files or multi-page PDF
         if wants_reorder and is_image_file and num_files == 1:
             return ClarificationResult(clarification="Upload multiple images to reorder and combine into PDF")
         
-        # Clean single image: Need multi-page document
         if wants_clean and is_image_file:
             return ClarificationResult(clarification="Upload a multi-page PDF to remove blank/duplicate pages")
         
-        # Mixed file types in merge
         if wants_merge and not all_pdfs and not all_images and num_files > 1:
             return ClarificationResult(clarification="Upload either all PDFs or all images to merge")
         
-        # Extract text from DOCX: Already text
         if wants_extract_text and is_docx_file:
             return ClarificationResult(clarification="DOCX is already a text document — just open it!")
         
-        # Enhance DOCX: Not applicable
         if wants_enhance and is_docx_file:
             return ClarificationResult(clarification="Enhance is for scanned documents. DOCX is already clear text.")
         
-        # Single file + merge: Need at least 2 files
         if wants_merge and num_files == 1:
             if is_pdf_file:
                 return ClarificationResult(clarification="Upload at least 2 PDFs to merge")
@@ -3501,12 +3241,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             if is_docx_file:
                 return ClarificationResult(clarification="Upload multiple files to merge")
 
-    # ============================================
-    # END HARDCODED GUARDS
-    # ============================================
 
-    # Deterministic convert shortcuts for common ambiguous phrasing.
-    # These improve reliability (and reduce LLM calls) for corpus-style commands.
     if file_names:
         primary = file_names[0]
         primary_lower = (primary or "").lower()
@@ -3515,7 +3250,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         wants_pdf = bool(re.search(r"\bpdf\b", prompt_for_match, re.IGNORECASE))
         wants_images = bool(re.search(r"\b(images?|img|png|jpe?g)\b", prompt_for_match, re.IGNORECASE))
 
-        # DOCX → PDF
         if wants_convert and wants_pdf and primary_lower.endswith(".docx"):
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -3524,7 +3258,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # PDF → DOCX
         if wants_convert and wants_word and primary_lower.endswith(".pdf"):
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -3533,7 +3266,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # PDF → Images
         if wants_convert and wants_images and primary_lower.endswith(".pdf"):
             fmt = "png"
             if re.search(r"\bjpe?g\b|\bjpg\b", prompt_for_match, re.IGNORECASE):
@@ -3550,7 +3282,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-    # If user answered with only a number and the last question was about degrees, treat as rotation.
     if (
         file_names
         and re.fullmatch(r"-?\d+", prompt_compact)
@@ -3560,9 +3291,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         prompt_for_match = f"rotate {prompt_compact} degrees"
         prompt_compact = prompt_for_match
 
-    # One-shot multi-op ambiguity handling (order): infer whenever possible.
     if allow_multi:
-        # First: generic auto-ordering for no-explicit-order multi-op prompts.
         try:
             auto_ordered = _auto_order_multi_op_no_order(user_prompt, file_names)
             if auto_ordered:
@@ -3581,27 +3310,19 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     except:
                         options = None
                 return ClarificationResult(clarification=clarification, options=options)
-            # otherwise ignore and continue
 
-        # Only ask order if auto-ordering didn't already resolve it.
         if not _has_explicit_order_words(user_prompt):
             order_result = _maybe_order_ambiguity_options(user_prompt, file_names)
             if order_result is not None:
                 return order_result
 
-    # Format-only prompts (very common): "png", "jpg", "docx", "txt", "ocr", "img"
-    # Prefer executing rather than asking "convert to what?".
-    # Note: "to img" with image files is caught by redundancy guards above ("Already an image")
     if file_names and prompt_compact in {"png", "jpg", "jpeg", "img", "to img", "to image", "to images"}:
         file_name = file_names[0]
         file_lower = file_name.lower()
         
-        # If the file is already an image, the redundancy guard above catches "to img" cases.
-        # For bare "png"/"jpg"/"img" with image files, also return "Already an image"
         if file_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')):
             return ClarificationResult(clarification="Already an image")
         
-        # Determine output format - default to png for "img"/"to img" etc
         output_format = "png"
         if prompt_compact in {"jpg", "jpeg"}:
             output_format = "jpg"
@@ -3647,10 +3368,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             )
         )
 
-    # Single-op heuristics that should NOT hijack multi-op prompts.
-    # These are also used by deterministic clause parsing (allow_multi=False).
     if (not allow_multi) or (not _looks_like_multi_operation_prompt(user_prompt)):
-        # Pattern: merge/combine/join
         if len(file_names) >= 2 and re.search(r"\b(merge|combine|join)\b", prompt_for_match, re.IGNORECASE):
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -3659,7 +3377,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: delete/remove pages
         if file_names and re.search(r"\b(delete|remove)\b", prompt_for_match, re.IGNORECASE):
             pages = _parse_page_ranges(user_prompt)
             if not pages:
@@ -3674,12 +3391,10 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: reorder/reverse pages to ...
         if file_names and re.search(r"\breorder\b|\bswap\b|\breverse\b", prompt_for_match, re.IGNORECASE):
             is_reverse = bool(re.search(r"\breverse\b", prompt_for_match, re.IGNORECASE))
             m = re.search(r"\b(?:to|as)\b\s*([0-9,\s]+)", user_prompt, re.IGNORECASE)
             
-            # If user said "reverse" without specific order, return intent with special marker
             if is_reverse and not m:
                 return ClarificationResult(
                     intent=ParsedIntent(
@@ -3706,7 +3421,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: watermark ...
         if file_names and re.search(r"\bwatermark\b", prompt_for_match, re.IGNORECASE):
             m = re.search(r"\bwatermark\b(?:\s+(?:with|text|as))?\s+(.+)$", user_prompt, re.IGNORECASE)
             text = (m.group(1).strip() if m else "").strip("\"'")
@@ -3722,7 +3436,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: add page numbers
         if file_names and re.search(r"\bpage\s*numbers?\b|\bnumber\s*pages\b", prompt_for_match, re.IGNORECASE):
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -3731,7 +3444,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        # Pattern: split to files / separate PDFs (zipped)
         if file_names and re.search(r"\bsplit\s*to\s*files\b|\bseparate\s+pdfs\b|\beach\s+page\b", prompt_for_match, re.IGNORECASE):
             pages = _parse_page_ranges(user_prompt)
             return ClarificationResult(
@@ -3741,8 +3453,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-    # If this looks like a multi-step request, let the LLM produce a pipeline plan.
-    # This avoids regex shortcuts accidentally collapsing multi-op prompts into a single op.
     if allow_multi and _looks_like_multi_operation_prompt(user_prompt):
         try:
             intent = ai_parser.parse_intent(user_prompt, file_names)
@@ -3759,25 +3469,19 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                     except:
                         pass
 
-                # Ensure order questions always provide full, runnable options.
                 if _is_order_clarification(clarification):
                     fallback = _order_options_from_context(user_prompt, clarification)
                     if fallback:
                         options = fallback
 
-                # Add options for common slot questions (degrees/pages/size)
                 if not options:
                     options = _options_for_common_questions(clarification, user_prompt)
                 print(f"[AI] Requesting clarification: {clarification}")
                 return ClarificationResult(clarification=clarification, options=options)
 
-            # If LLM returned an unsupported op schema, enforce corpus reply.
             if _is_likely_unsupported_validation_error(error_msg) or _is_explicitly_unsupported_request(prompt_for_match):
                 return ClarificationResult(clarification=UNSUPPORTED_REPLY)
 
-            # Non-clarification failure: fall back to deterministic 2-step parsing
-            # so common clickable options like "rotate 90 degrees and then compress" still work.
-            # Broader deterministic fallback for 2+ steps.
             fallback_multi = _fallback_parse_multi_step_pipeline(user_prompt, file_names)
             if fallback_multi:
                 return ClarificationResult(intent=fallback_multi)
@@ -3793,7 +3497,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-    # Pattern 1: "compress to X MB" or "compress to XMB"
     mb_match = re.search(r"compress( this| pdf)?( to| under)?\s*(\d+)\s*mb", prompt_for_match, re.IGNORECASE)
     if mb_match and file_names:
         target_mb = int(mb_match.group(3))
@@ -3804,7 +3507,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         )
         return ClarificationResult(intent=compress_intent)
     
-    # Pattern 2: "compress by X%" (calculate target size based on percentage)
     percent_match = re.search(r"compress( this)?( pdf)? by (\d{1,3})%", prompt_for_match, re.IGNORECASE)
     if percent_match and file_names:
         percent = int(percent_match.group(3))
@@ -3820,9 +3522,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             )
             return ClarificationResult(intent=compress_intent)
     
-    # Pattern 2.5: "split all pages" (without page range) → treat as split_to_files
     if file_names and re.search(r"\bsplit\s+(all\s+)?pages?\b", prompt_for_match, re.IGNORECASE):
-        # If no specific page range mentioned, assume split_to_files.
         if not re.search(r"\b(pages?\s+)?\d+(-\d+)?(\s*,\s*\d+(-\d+)?)*\b", prompt_for_match):
             return ClarificationResult(
                 intent=ParsedIntent(
@@ -3831,7 +3531,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-    # Pattern 3: "split 1st page", "extract first page", "keep page 1"
     first_page_match = re.search(r"(split|extract|keep)\s*(1st|first|page 1)\s*page", prompt_for_match, re.IGNORECASE)
     if first_page_match and file_names:
         file_name = file_names[0]
@@ -3841,7 +3540,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         )
         return ClarificationResult(intent=split_intent)
     
-    # Pattern 4: "split first N pages" or "extract first N pages"
     first_n_match = re.search(r"(split|extract|keep)\s*first\s*(\d+)\s*pages?", prompt_for_match, re.IGNORECASE)
     if first_n_match and file_names:
         n = int(first_n_match.group(2))
@@ -3852,8 +3550,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         )
         return ClarificationResult(intent=split_intent)
 
-    # Pattern 4.5: rotate (default to 90 degrees when missing)
-    # Human inputs: "rotate", "rotate it", "turn it", "flip", "rotate left/right", "90"
     rotate_word = re.search(r"\b(rotate|rotat|turn|flip|straight)\b", prompt_for_match, re.IGNORECASE)
     rotate_number = re.search(r"(-?\d+)\s*(deg|degree|degrees)?\b", prompt_for_match, re.IGNORECASE)
     rotate_dir_left = re.search(r"\b(left|anti|anticlock|counter)\b", prompt_for_match, re.IGNORECASE)
@@ -3871,7 +3567,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             degrees = 180
         elif rotate_number:
             raw = int(rotate_number.group(1))
-            # Normalize -90 -> 270, 0/360 -> 0 (but our model only supports 90/180/270).
             normalized = raw % 360
             if normalized == 0:
                 degrees = 90
@@ -3882,11 +3577,9 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             elif normalized == 270:
                 degrees = 270
             else:
-                # For non-right-angle inputs, pick the nearest right angle.
                 candidates = [90, 180, 270]
                 degrees = min(candidates, key=lambda d: min((normalized - d) % 360, (d - normalized) % 360))
         else:
-            # Missing degrees: default per spec.
             degrees = 90
 
         rotate_intent = ParsedIntent(
@@ -3895,9 +3588,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         )
         return ClarificationResult(intent=rotate_intent)
 
-    # Pattern 5: qualitative "compress" (no target given)
     if re.search(r"\bcompress\b", prompt_for_match, re.IGNORECASE) and file_names:
-        # Spec: if no target is given, use a safe default preset instead of asking.
         preset = _infer_compress_preset(user_prompt)
         file_name = file_names[0]
         compress_intent = ParsedIntent(
@@ -3906,14 +3597,10 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         )
         return ClarificationResult(intent=compress_intent)
     
-    # If no patterns matched, try AI parser
-    # COST-SAFE SANITIZATION: Check if prompt is garbage before calling LLM
     use_llm, reason = should_use_llm(user_prompt)
     
     if not use_llm:
-        # Prompt is garbage - don't waste LLM tokens
         print(f"[Sanitizer] Skipping LLM - reason: {reason}")
-        # Determine file type for appropriate suggestions
         from app.prompt_sanitizer import get_file_type_from_names
         file_type = get_file_type_from_names(file_names)
         invalid_response = get_invalid_prompt_response(file_type)
@@ -3928,7 +3615,6 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
     except ValueError as e:
         error_msg = str(e)
         
-        # Check if this is a clarification request from AI
         if "CLARIFICATION_NEEDED:" in error_msg:
             parts = error_msg.split(" | OPTIONS: ")
             clarification = parts[0].replace("CLARIFICATION_NEEDED: ", "")
@@ -3939,24 +3625,19 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 except:
                     pass
 
-            # Ensure order questions always provide full, runnable options.
             if _is_order_clarification(clarification):
                 fallback = _order_options_from_context(user_prompt, clarification)
                 if fallback:
                     options = fallback
 
-            # Add options for common slot questions (degrees/pages/size)
             if not options:
                 options = _options_for_common_questions(clarification, user_prompt)
             print(f"[AI] Requesting clarification: {clarification}")
             return ClarificationResult(clarification=clarification, options=options)
 
-        # If the request is for an unsupported feature (or the LLM produced an unsupported op),
-        # enforce the corpus rule.
         if _is_likely_unsupported_validation_error(error_msg) or _is_explicitly_unsupported_request(prompt_for_match):
             return ClarificationResult(clarification=UNSUPPORTED_REPLY)
         
-        # If AI parser fails for other reasons, show helpful examples
         clarification = (
             "Sorry, I couldn't understand your request. Here are some examples:\n\n"
             "📄 Merge: 'merge these files', 'combine all PDFs'\n"

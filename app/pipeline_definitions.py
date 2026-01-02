@@ -76,11 +76,7 @@ class PipelineRegistry:
         return None
 
 
-# ============================================
-# 1. PDF Multi-Operation Pipelines (1-45)
-# ============================================
 
-# 1. merge + compress
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Compress",
@@ -92,7 +88,6 @@ PipelineRegistry.register(
     )
 )
 
-# 2. merge + ocr
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & OCR",
@@ -104,7 +99,6 @@ PipelineRegistry.register(
     )
 )
 
-# 3. merge + enhance
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Enhance",
@@ -116,7 +110,6 @@ PipelineRegistry.register(
     )
 )
 
-# 4. merge + flatten
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Flatten",
@@ -128,7 +121,6 @@ PipelineRegistry.register(
     )
 )
 
-# 5. merge + page_numbers
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Add Page Numbers",
@@ -140,7 +132,6 @@ PipelineRegistry.register(
     )
 )
 
-# 6. merge + rotate
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Rotate",
@@ -152,7 +143,6 @@ PipelineRegistry.register(
     )
 )
 
-# 7. merge + clean
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Clean",
@@ -164,7 +154,6 @@ PipelineRegistry.register(
     )
 )
 
-# 8. merge + split
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Split",
@@ -176,7 +165,6 @@ PipelineRegistry.register(
     )
 )
 
-# 9. merge + reorder
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge & Reorder",
@@ -188,7 +176,6 @@ PipelineRegistry.register(
     )
 )
 
-# 10. merge + compress + ocr
 PipelineRegistry.register(
     Pipeline(
         name="PDF Merge, Compress & OCR",
@@ -200,7 +187,6 @@ PipelineRegistry.register(
     )
 )
 
-# 11. ocr + compress
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Compress",
@@ -212,7 +198,6 @@ PipelineRegistry.register(
     )
 )
 
-# 12. enhance + ocr
 PipelineRegistry.register(
     Pipeline(
         name="PDF Enhance & OCR",
@@ -224,7 +209,6 @@ PipelineRegistry.register(
     )
 )
 
-# 13. enhance + ocr + compress
 PipelineRegistry.register(
     Pipeline(
         name="PDF Enhance, OCR & Compress",
@@ -236,7 +220,6 @@ PipelineRegistry.register(
     )
 )
 
-# 14. ocr + flatten
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Flatten",
@@ -248,7 +231,6 @@ PipelineRegistry.register(
     )
 )
 
-# 15. ocr + page_numbers
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Page Numbers",
@@ -260,7 +242,6 @@ PipelineRegistry.register(
     )
 )
 
-# 16. ocr + clean
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Clean",
@@ -272,7 +253,6 @@ PipelineRegistry.register(
     )
 )
 
-# 17. ocr + split
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Split",
@@ -284,7 +264,6 @@ PipelineRegistry.register(
     )
 )
 
-# 18. ocr + rotate
 PipelineRegistry.register(
     Pipeline(
         name="PDF OCR & Rotate",
@@ -296,7 +275,6 @@ PipelineRegistry.register(
     )
 )
 
-# 19. clean + compress
 PipelineRegistry.register(
     Pipeline(
         name="PDF Clean & Compress",
@@ -308,7 +286,6 @@ PipelineRegistry.register(
     )
 )
 
-# 20. clean + reorder
 PipelineRegistry.register(
     Pipeline(
         name="PDF Clean & Reorder",
@@ -320,10 +297,7 @@ PipelineRegistry.register(
     )
 )
 
-# Additional 25+ pipelines...
-# (Continuing with variations and combinations)
 
-# 21. clean + split
 PipelineRegistry.register(
     Pipeline(
         name="PDF Clean & Split",
@@ -335,7 +309,6 @@ PipelineRegistry.register(
     )
 )
 
-# 22. clean + flatten
 PipelineRegistry.register(
     Pipeline(
         name="PDF Clean & Flatten",
@@ -347,7 +320,6 @@ PipelineRegistry.register(
     )
 )
 
-# 23. compress + flatten
 PipelineRegistry.register(
     Pipeline(
         name="PDF Compress & Flatten",
@@ -359,7 +331,6 @@ PipelineRegistry.register(
     )
 )
 
-# 24. rotate + compress
 PipelineRegistry.register(
     Pipeline(
         name="PDF Rotate & Compress",
@@ -371,7 +342,6 @@ PipelineRegistry.register(
     )
 )
 
-# 25. rotate + split
 PipelineRegistry.register(
     Pipeline(
         name="PDF Rotate & Split",
@@ -383,9 +353,6 @@ PipelineRegistry.register(
     )
 )
 
-# ============================================
-# 2. Natural Language Shortcut Pipelines (26-80)
-# ============================================
 
 NATURAL_LANGUAGE_PIPELINES = [
     ("email ready", ["compress"], "Optimize for email"),
@@ -433,11 +400,7 @@ for intent, ops, description in NATURAL_LANGUAGE_PIPELINES:
         )
     )
 
-# ============================================
-# 3. Image Multi-Operation Pipelines (81-110)
-# ============================================
 
-# Images to PDF
 PipelineRegistry.register(
     Pipeline(
         name="Images Combine & Compress",
@@ -471,7 +434,6 @@ PipelineRegistry.register(
     )
 )
 
-# Image enhancement pipelines
 PipelineRegistry.register(
     Pipeline(
         name="Image Enhance & OCR",
@@ -494,9 +456,6 @@ PipelineRegistry.register(
     )
 )
 
-# ============================================
-# 4. DOCX Multi-Operation Pipelines (111-120+)
-# ============================================
 
 PipelineRegistry.register(
     Pipeline(
@@ -580,8 +539,6 @@ def should_auto_chain_operations(operations: List[str]) -> bool:
     if pipeline:
         return True
     
-    # Check for logical order (e.g., merge before split is OK, split before merge is weird)
-    # This is a heuristic and could be expanded
     
     return False
 
@@ -596,7 +553,6 @@ def get_execution_order(operations: List[str]) -> List[str]:
     if pipeline:
         return pipeline.operations
     
-    # Heuristic: merge → clean → enhance → ocr → convert → rotate → reorder → split → compress
     precedence = {
         "merge": 10,
         "clean": 9,
@@ -610,7 +566,6 @@ def get_execution_order(operations: List[str]) -> List[str]:
         "flatten": 1,
     }
     
-    # Sort by precedence (higher first)
     sorted_ops = sorted(
         operations,
         key=lambda op: precedence.get(op.lower(), 0),

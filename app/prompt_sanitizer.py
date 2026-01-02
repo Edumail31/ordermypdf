@@ -25,13 +25,8 @@ from typing import Tuple, Optional
 from dataclasses import dataclass
 
 
-# ============================================
-# KNOWN TOKENS (NO LLM NEEDED IF MATCHED)
-# ============================================
 
-# Known action verbs - if ANY present, no LLM needed
 KNOWN_ACTION_VERBS = {
-    # Core operations
     "merge", "combine", "join", "split", "extract", "keep", "delete", "remove",
     "compress", "reduce", "shrink", "small", "smaller", "tiny",
     "convert", "change", "transform", "export",
@@ -44,7 +39,6 @@ KNOWN_ACTION_VERBS = {
     "clean", "blank", "duplicate",
     "number", "numbers", "page",
     "text",
-    # Common typos for verbs
     "merg", "mrge", "combin", "compres", "comprs", "comress",
     "splt", "spill", "spilt", "splitt",
     "delet", "remov", "rotat", "roate", "rotae",
@@ -52,34 +46,27 @@ KNOWN_ACTION_VERBS = {
     "enhace", "enhanc",
 }
 
-# Known file type tokens - if ANY present, no LLM needed
 KNOWN_FILE_TYPES = {
     "pdf", "docx", "doc", "word",
     "png", "jpg", "jpeg", "image", "images", "img",
     "txt", "text",
     "zip",
-    # Common typos
     "pfd", "pff", "dox", "dog", "docs", "wrod", "wrord",
     "pngg", "jgp", "jepg", "jpge", "imag", "imge",
 }
 
-# Known aliases and shortcuts - direct mappings
 KNOWN_ALIASES = {
-    # Format shortcuts
     "to docx", "to doc", "to word", "as docx", "as word",
     "to pdf", "as pdf",
     "to png", "to jpg", "to jpeg", "to img", "to image", "to images",
     "as png", "as jpg", "as jpeg", "as img",
     "to txt", "to text", "as txt",
-    # Operation shortcuts
     "ocr", "compress", "merge", "split", "rotate", "flatten",
     "enhance", "clean", "watermark",
-    # Common typos for shortcuts
     "too docx", "too doc", "too pdf", "too word",
     "too png", "too jpg", "too img",
     "tto docx", "tto pdf", "tto png",
     "2 docx", "2 pdf", "2 png", "2 word",
-    # With typos
     "to dox", "to dcox", "to doxx", "to pfd",
     "compres", "comprs", "comress",
     "splt", "splitt",
@@ -88,13 +75,11 @@ KNOWN_ALIASES = {
     "cnvrt", "convrt",
 }
 
-# Purpose keywords that indicate valid intent
 PURPOSE_KEYWORDS = {
     "email", "whatsapp", "print", "web", "share", "upload", "send",
     "smaller", "reduce", "shrink",
 }
 
-# Common filler words to strip
 FILLER_WORDS = {
     "please", "pls", "plz", "can", "you", "could", "would",
     "i", "want", "need", "like", "to", "the", "this", "that",
@@ -103,9 +88,6 @@ FILLER_WORDS = {
 }
 
 
-# ============================================
-# GARBAGE DETECTION HEURISTICS
-# ============================================
 
 @dataclass
 class GarbageAnalysis:
@@ -154,10 +136,8 @@ def _calculate_dictionary_word_ratio(text: str) -> float:
     if not words:
         return 0.0
     
-    # Combine all known words
     all_known = KNOWN_ACTION_VERBS | KNOWN_FILE_TYPES | FILLER_WORDS | PURPOSE_KEYWORDS
     
-    # Add common English words
     common_words = {
         "the", "a", "an", "is", "are", "was", "were", "be", "been",
         "have", "has", "had", "do", "does", "did", "will", "would",
@@ -182,22 +162,18 @@ def _has_known_tokens(text: str) -> bool:
     """Check if text contains any known action verbs or file types."""
     text_lower = text.lower()
     
-    # Check for known verbs
     for verb in KNOWN_ACTION_VERBS:
         if verb in text_lower:
             return True
     
-    # Check for known file types
     for ftype in KNOWN_FILE_TYPES:
         if ftype in text_lower:
             return True
     
-    # Check for known aliases
     for alias in KNOWN_ALIASES:
         if alias in text_lower:
             return True
     
-    # Check for purpose keywords
     for purpose in PURPOSE_KEYWORDS:
         if purpose in text_lower:
             return True
@@ -209,13 +185,10 @@ def _matches_known_alias(text: str) -> bool:
     """Check if text matches a known alias pattern."""
     text_lower = text.lower().strip()
     
-    # Direct alias match
     if text_lower in KNOWN_ALIASES:
         return True
     
-    # Check with minor variations
     for alias in KNOWN_ALIASES:
-        # Allow for small Levenshtein distance
         if len(text_lower) >= 3 and len(alias) >= 3:
             if text_lower.startswith(alias[:3]) or alias.startswith(text_lower[:3]):
                 return True
@@ -241,50 +214,40 @@ def analyze_for_garbage(text: str) -> GarbageAnalysis:
     
     text = text.strip()
     
-    # Calculate metrics
     char_rep_ratio = _calculate_char_repetition_ratio(text)
     non_alnum_ratio = _calculate_non_alnum_ratio(text)
     dict_word_ratio = _calculate_dictionary_word_ratio(text)
     has_tokens = _has_known_tokens(text)
     
-    # Determine if garbage - ALL conditions must be true for LLM
     is_garbage = False
     reason = "Valid input"
     
-    # If has known tokens, NEVER garbage
     if has_tokens:
         is_garbage = False
         reason = "Contains known tokens"
-    # If matches alias, NEVER garbage
     elif _matches_known_alias(text):
         is_garbage = False
         reason = "Matches known alias"
     else:
-        # Check garbage conditions - need at least 2 to trigger
         garbage_signals = 0
         reasons = []
         
-        # High character repetition (e.g., "toooooo doooogs")
         if char_rep_ratio > 0.3:
             garbage_signals += 1
             reasons.append(f"High char repetition ({char_rep_ratio:.2f})")
         
-        # Low dictionary word ratio
         if dict_word_ratio < 0.2:
             garbage_signals += 1
             reasons.append(f"Low dictionary ratio ({dict_word_ratio:.2f})")
         
-        # High non-alphanumeric ratio (e.g., "....????")
         if non_alnum_ratio > 0.5:
             garbage_signals += 1
             reasons.append(f"High non-alnum ratio ({non_alnum_ratio:.2f})")
         
-        # Very short with no recognizable content
         if len(text.split()) <= 2 and dict_word_ratio < 0.5:
             garbage_signals += 1
             reasons.append("Very short, unrecognized")
         
-        # Need at least 2 signals to consider garbage
         if garbage_signals >= 2:
             is_garbage = True
             reason = "; ".join(reasons)
@@ -299,9 +262,6 @@ def analyze_for_garbage(text: str) -> GarbageAnalysis:
     )
 
 
-# ============================================
-# MAIN FILTER FUNCTION
-# ============================================
 
 def should_use_llm(user_prompt: str, file_names: list[str] = None) -> Tuple[bool, str]:
     """
@@ -327,7 +287,6 @@ def should_use_llm(user_prompt: str, file_names: list[str] = None) -> Tuple[bool
     
     prompt = user_prompt.strip()
     
-    # Very short prompts with known content - handle locally
     words = prompt.split()
     if len(words) <= 3:
         if _has_known_tokens(prompt):
@@ -335,7 +294,6 @@ def should_use_llm(user_prompt: str, file_names: list[str] = None) -> Tuple[bool
         if _matches_known_alias(prompt):
             return False, "Short prompt matches alias - handle locally"
     
-    # Analyze for garbage
     analysis = analyze_for_garbage(prompt)
     
     if analysis.has_known_tokens:
@@ -347,8 +305,6 @@ def should_use_llm(user_prompt: str, file_names: list[str] = None) -> Tuple[bool
     if analysis.is_garbage:
         return True, f"Extreme garbage detected: {analysis.reason}"
     
-    # Default: try local handling first
-    # Only reach LLM if local parsing fails
     return False, "Appears parseable - try local first"
 
 
@@ -365,18 +321,7 @@ def sanitize_with_llm(user_prompt: str, file_type: str) -> Tuple[Optional[str], 
         
     If LLM returns INVALID_PROMPT, returns (None, False)
     """
-    # This function would call LLM with a specific sanitization prompt
-    # For now, we return None to indicate invalid - actual LLM call
-    # will be integrated with existing ai_parser
     
-    # The LLM prompt would be:
-    # """
-    # User uploaded file type: {file_type}
-    # Supported actions: merge, split, compress, convert, rotate, etc.
-    # User input: "{user_prompt}"
-    # 
-    # Repair into valid instruction OR return INVALID_PROMPT
-    # """
     
     return None, False
 

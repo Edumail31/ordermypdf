@@ -125,7 +125,6 @@ class GroqRephraser:
             return None
 
         try:
-            # Lazy import to avoid any import-time cost.
             from groq import Groq
 
             client = Groq(api_key=settings.groq_api_key)
@@ -161,13 +160,10 @@ def rephrase_with_fallback(
 
     providers = []
 
-    # 1) Baseten first (if configured)
     providers.append(BasetenOpenAICompatRephraser())
 
-    # 2) Groq primary model (your existing "llama" model)
     providers.append(GroqRephraser(settings.llm_model, provider_name=f"groq:{settings.llm_model}"))
 
-    # 3) Groq fallback model (optional)
     third = getattr(settings, "llm_model_rephrase_third", None)
     if third:
         providers.append(GroqRephraser(third, provider_name=f"groq:{third}"))
@@ -180,7 +176,6 @@ def rephrase_with_fallback(
     for p in providers:
         out = p.rephrase(original, file_names=file_names)
         if out and out.text and out.text.strip():
-            # Avoid returning something wildly longer than the original.
             text = out.text.strip()
             if len(text) > 4 * len(original) and len(text) > 200:
                 continue

@@ -14,7 +14,6 @@ Impact:
 Usage:
     for page_text in stream_pdf_pages(file_path):
         process(page_text)
-        # Page memory freed after yielding
 """
 
 import logging
@@ -34,7 +33,6 @@ def stream_pdf_pages(file_path: str) -> Generator[dict, None, None]:
     Memory: ~1-2MB per page instead of entire file
     """
     try:
-        # Lazy import PyMuPDF only when needed
         import fitz
         
         pdf = fitz.open(file_path)
@@ -46,10 +44,8 @@ def stream_pdf_pages(file_path: str) -> Generator[dict, None, None]:
             try:
                 page = pdf[page_num]
                 
-                # Extract text
                 text = page.get_text()
                 
-                # Extract image count
                 images = page.get_images()
                 
                 yield {
@@ -59,7 +55,6 @@ def stream_pdf_pages(file_path: str) -> Generator[dict, None, None]:
                     "total_pages": total_pages
                 }
                 
-                # Explicitly clean up page
                 del page
                 
             except Exception as e:

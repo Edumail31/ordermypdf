@@ -170,7 +170,6 @@ class UniversalRedundancyGuards:
             UniversalRedundancyGuards.check_single_page_split(operation, page_count),
         ]
         
-        # Return first non-None result
         for guard_result in guards:
             if guard_result is not None:
                 logger.info(f"[REDUNDANCY GUARD TRIGGERED] {guard_result.message}")
@@ -186,9 +185,7 @@ class OperationFileTypeCompatibility:
     Defines which operations are valid for which file types.
     """
     
-    # Compatibility matrix: operation → valid file types
     MATRIX: Dict[str, Dict[str, any]] = {
-        # PDF-only operations
         "merge": {
             "valid_types": [FileType.PDF],
             "message": "Merge supports PDFs only",
@@ -225,7 +222,6 @@ class OperationFileTypeCompatibility:
             "block": True,
         },
         
-        # Image/scanned file operations
         "ocr": {
             "valid_types": [FileType.PDF, FileType.JPG, FileType.PNG, FileType.JPEG],
             "message": "OCR supports scanned PDFs or images only",
@@ -237,7 +233,6 @@ class OperationFileTypeCompatibility:
             "block": False,
         },
         
-        # Multi-format operations
         "compress": {
             "valid_types": [FileType.PDF, FileType.JPG, FileType.PNG, FileType.JPEG, FileType.DOCX],
             "message": "Compressing file",
@@ -249,7 +244,6 @@ class OperationFileTypeCompatibility:
             "block": False,
         },
         
-        # Conversion operations (specific rules)
         "convert_to_image": {
             "valid_types": [FileType.PDF],
             "message": "PDF to image conversion",
@@ -279,7 +273,6 @@ class OperationFileTypeCompatibility:
             GuardResult if incompatible (action=BLOCK), None if compatible.
         """
         if operation not in OperationFileTypeCompatibility.MATRIX:
-            # Unknown operation - don't block, let it proceed
             return None
         
         entry = OperationFileTypeCompatibility.MATRIX[operation]
@@ -293,7 +286,6 @@ class OperationFileTypeCompatibility:
                     can_proceed=False,
                 )
             else:
-                # Non-blocking incompatibility, can still proceed
                 logger.warning(
                     f"[COMPATIBILITY WARNING] Operation '{operation}' may not work well with {file_type}"
                 )
@@ -319,14 +311,12 @@ def check_all_guards(
     Returns:
         GuardResult if any guard is triggered, None if all clear.
     """
-    # First check redundancy
     redundancy_result = UniversalRedundancyGuards.run_all_redundancy_guards(
         operation, current_type, filename, page_count
     )
     if redundancy_result:
         return redundancy_result
     
-    # Then check compatibility
     compatibility_result = OperationFileTypeCompatibility.check_compatibility(
         operation, current_type
     )
@@ -336,9 +326,6 @@ def check_all_guards(
     return None
 
 
-# ============================================
-# CONTEXT INHERITANCE RULES
-# ============================================
 
 def should_inherit_context(prompt: str) -> bool:
     """
@@ -357,11 +344,9 @@ def should_inherit_context(prompt: str) -> bool:
     """
     tokens = prompt.strip().split()
     
-    # Rule: ≤5 tokens without explicit file references
     if len(tokens) > 5:
         return False
     
-    # Check for explicit file references (e.g., "file1", "file2")
     if any(keyword in prompt.lower() for keyword in ["file1", "file2", "file3", "upload"]):
         return False
     
@@ -401,7 +386,6 @@ def apply_context_inheritance(
         f"the processed {last_file}",
     )
     
-    # Expand common short follow-ups
     expansions = {
         "to docx": f"convert {last_output_desc} to DOCX",
         "to pdf": f"convert {last_output_desc} to PDF",
@@ -413,7 +397,6 @@ def apply_context_inheritance(
         "flatten": f"flatten {last_output_desc}",
     }
     
-    # Try to match and expand
     prompt_lower = short_prompt.lower().strip()
     for shorthand, expansion in expansions.items():
         if shorthand in prompt_lower:
@@ -421,5 +404,4 @@ def apply_context_inheritance(
             logger.info(f"[CONTEXT INHERITED] '{short_prompt}' → '{expanded}'")
             return expanded
     
-    # Default: add file context
     return f"apply '{short_prompt}' to {last_output_desc}"

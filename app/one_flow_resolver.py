@@ -29,9 +29,6 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
-# ============================================
-# SUPPORTED OPERATIONS & TYPES
-# ============================================
 
 class SupportedOp(str, Enum):
     """All supported operations"""
@@ -59,11 +56,7 @@ class FileType(str, Enum):
     JPEG = "jpeg"
 
 
-# ============================================
-# INPUT NORMALIZATION PATTERNS
-# ============================================
 
-# Common prefixes to strip (context noise)
 PREFIX_PATTERNS = [
     r"^and\s+",
     r"^pls\s+",
@@ -83,7 +76,6 @@ PREFIX_PATTERNS = [
     r"^i\s+need\s+to\s+",
 ]
 
-# Target format patterns
 TARGET_FORMAT_PATTERNS = {
     r"\bto\s+pdf\b": FileType.PDF,
     r"\bto\s+docx?\b": FileType.DOCX,
@@ -94,13 +86,11 @@ TARGET_FORMAT_PATTERNS = {
     r"\bas\s+docx?\b": FileType.DOCX,
 }
 
-# Target size patterns
 TARGET_SIZE_PATTERN = re.compile(
     r"(\d+(?:\.\d+)?)\s*(kb|mb|gb)",
     re.IGNORECASE
 )
 
-# Purpose patterns (email, whatsapp, print)
 PURPOSE_PATTERNS = {
     r"\bemail\b": "email",
     r"\bwhatsapp\b": "whatsapp",
@@ -109,7 +99,6 @@ PURPOSE_PATTERNS = {
     r"\bshare\b": "share",
 }
 
-# Operation detection patterns
 OPERATION_PATTERNS = {
     SupportedOp.MERGE: re.compile(r"\b(merge|combine|join)\b", re.IGNORECASE),
     SupportedOp.SPLIT: re.compile(r"\b(split|separate|divide)\b", re.IGNORECASE),
@@ -125,13 +114,9 @@ OPERATION_PATTERNS = {
     SupportedOp.PAGE_NUMBERS: re.compile(r"\b(page[-\s]?numbers?|add\s+numbers?)\b", re.IGNORECASE),
 }
 
-# Pipeline arrow pattern (fixed for regex compatibility)
 PIPELINE_ARROW = re.compile(r"\s*(?:→|➔|->|>)+\s*")
 
 
-# ============================================
-# DATA CLASSES
-# ============================================
 
 @dataclass
 class ParsedCommand:
@@ -170,9 +155,6 @@ class ResolutionResult:
     error_message: Optional[str] = None
 
 
-# ============================================
-# LOCAL NORMALIZER
-# ============================================
 
 class LocalNormalizer:
     """
@@ -190,11 +172,9 @@ class LocalNormalizer:
         
         result = text.lower().strip()
         
-        # Strip common prefixes
         for pattern in PREFIX_PATTERNS:
             result = re.sub(pattern, "", result, flags=re.IGNORECASE).strip()
         
-        # Fix common typos
         typo_fixes = {
             r"\bcompres\b": "compress",
             r"\bcomprs\b": "compress",
@@ -224,7 +204,6 @@ class LocalNormalizer:
         for typo, fix in typo_fixes.items():
             result = re.sub(typo, fix, result, flags=re.IGNORECASE)
         
-        # Normalize arrows
         result = PIPELINE_ARROW.sub(" → ", result)
         
         return result.strip()
@@ -234,7 +213,6 @@ class LocalNormalizer:
         """Extract operations from text"""
         operations = []
         
-        # Check for pipeline arrow notation
         if "→" in text:
             parts = text.split("→")
             for part in parts:
@@ -244,7 +222,6 @@ class LocalNormalizer:
                         operations.append(op)
                         break
         else:
-            # Check each operation pattern
             for op, pattern in OPERATION_PATTERNS.items():
                 if pattern.search(text):
                     operations.append(op)
@@ -285,9 +262,6 @@ class LocalNormalizer:
         return None
 
 
-# ============================================
-# DETERMINISTIC GUARDS
-# ============================================
 
 class DeterministicGuards:
     """
@@ -306,7 +280,6 @@ class DeterministicGuards:
     ) -> GuardResult:
         """Check for redundant operations (e.g., image→to img)"""
         
-        # Image to image conversion is redundant
         if source_type in (FileType.IMG, FileType.JPG, FileType.PNG, FileType.JPEG):
             if target_format in (FileType.IMG, FileType.JPG, FileType.PNG, FileType.JPEG):
                 if source_type == target_format:
@@ -315,7 +288,6 @@ class DeterministicGuards:
                         user_message="File is already in the target format"
                     )
         
-        # PDF to PDF conversion is redundant
         if source_type == FileType.PDF and target_format == FileType.PDF:
             if SupportedOp.CONVERT in operations and len(operations) == 1:
                 return GuardResult(
@@ -332,7 +304,6 @@ class DeterministicGuards:
     ) -> GuardResult:
         """Check operation compatibility with file type"""
         
-        # OCR only makes sense on PDFs/images
         if SupportedOp.OCR in operations:
             if source_type == FileType.DOCX:
                 return GuardResult(
@@ -340,7 +311,6 @@ class DeterministicGuards:
                     user_message="OCR is not needed for DOCX files - text is already extractable"
                 )
         
-        # Merge requires multiple files (handled elsewhere)
         
         return GuardResult()
     
@@ -390,9 +360,6 @@ class DeterministicGuards:
         return GuardResult()
 
 
-# ============================================
-# DETERMINISTIC PIPELINE MATCHER
-# ============================================
 
 class PipelineMatcher:
     """
@@ -413,10 +380,8 @@ class PipelineMatcher:
                 error_message="Could not detect operation"
             )
         
-        # Apply guards
         guards = DeterministicGuards()
         
-        # Check redundancy
         redundancy_result = guards.check_redundancy(
             source_type,
             parsed.target_format,
@@ -429,16 +394,12 @@ class PipelineMatcher:
                 guard_result=redundancy_result
             )
         
-        # Check compatibility
         compat_result = guards.check_compatibility(source_type, operations)
         if compat_result.should_skip:
-            # Remove incompatible operation
             operations = [op for op in operations if op != SupportedOp.OCR]
         
-        # Build pipeline string
         pipeline = [op.value for op in operations]
         
-        # High confidence if we have operations and they make sense
         confidence = 0.9 if len(operations) >= 1 else 0.5
         
         return ResolutionResult(
@@ -451,9 +412,6 @@ class PipelineMatcher:
         )
 
 
-# ============================================
-# ONE-FLOW RESOLVER
-# ============================================
 
 class OneFlowResolver:
     """
@@ -489,10 +447,8 @@ class OneFlowResolver:
             ResolutionResult with pipeline or options for user choice
         """
         
-        # Stage 1: Normalize
         normalized = self.normalizer.normalize(user_input)
         
-        # Extract components
         operations = self.normalizer.extract_operations(normalized)
         target_format = self.normalizer.extract_target_format(normalized)
         target_size = self.normalizer.extract_target_size(normalized)
@@ -510,16 +466,13 @@ class OneFlowResolver:
         
         logger.debug(f"[ONE-FLOW] Parsed: {parsed}")
         
-        # Stage 2: Deterministic Match
         result = self.matcher.match(parsed, source_type)
         
         if result.success and result.pipeline:
             logger.info(f"[ONE-FLOW] Matched pipeline: {result.pipeline}")
             return result
         
-        # Stage 3: If unclear, provide options (LLM rephrase would go here in full impl)
         if not result.success or result.needs_user_choice:
-            # Generate contextual options based on file type
             options = self._generate_options(source_type, parsed)
             
             return ResolutionResult(
@@ -538,7 +491,6 @@ class OneFlowResolver:
     ) -> List[str]:
         """Generate top-N action options based on context"""
         
-        # Common options for all file types
         base_options = []
         
         if source_type == FileType.PDF:
@@ -566,9 +518,7 @@ class OneFlowResolver:
                 "Merge into PDF",
             ]
         
-        # If we detected partial operations, prioritize related options
         if parsed.operations:
-            # Move related options to top
             for op in parsed.operations:
                 op_name = op.value.title()
                 matching = [o for o in base_options if op_name.lower() in o.lower()]
@@ -576,7 +526,6 @@ class OneFlowResolver:
                     base_options.remove(m)
                     base_options.insert(0, m)
         
-        # Return top 3-5 options
         return base_options[:5]
     
     def handle_retry(
@@ -592,12 +541,9 @@ class OneFlowResolver:
             (should_retry, retry_action)
         """
         
-        # Check for size miss
         if original_result.target_size_mb:
-            # This would need actual achieved size - placeholder
             pass
         
-        # Check for XML/Unicode error
         xml_result = self.guards.check_xml_unicode_error(error_message, retry_count)
         if xml_result.should_retry:
             return True, xml_result.retry_action
@@ -605,9 +551,6 @@ class OneFlowResolver:
         return False, None
 
 
-# ============================================
-# CONVENIENCE FUNCTIONS
-# ============================================
 
 def resolve_command(
     user_input: str,
@@ -624,7 +567,6 @@ def resolve_command(
         ResolutionResult
     """
     
-    # Detect file type from filename
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     
     type_map = {
@@ -684,5 +626,4 @@ def get_purpose_presets(purpose: str) -> dict:
     return presets.get(purpose, presets["email"])
 
 
-# Global resolver instance
 one_flow_resolver = OneFlowResolver()

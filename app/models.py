@@ -7,9 +7,6 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 
-# ============================================
-# ERROR CLASSIFICATION MODELS
-# ============================================
 
 class ErrorTypeEnum(str, Enum):
     """Error types for taxonomy"""
@@ -53,9 +50,6 @@ class ErrorResponse(BaseModel):
     recovery_action: Optional[str] = None
 
 
-# ============================================
-# API REQUEST / RESPONSE MODELS
-# ============================================
 
 class ProcessRequest(BaseModel):
     """User's request to process PDFs"""
@@ -72,9 +66,6 @@ class ProcessResponse(BaseModel):
     options: Optional[List[str]] = None
 
 
-# ============================================
-# AI INTENT PARSING MODELS
-# ============================================
 
 class MergeIntent(BaseModel):
     """Intent to merge multiple PDFs"""
@@ -230,13 +221,11 @@ class OcrIntent(BaseModel):
     language: Optional[str] = Field(default="eng", description="OCR language (default eng)")
     deskew: Optional[bool] = Field(default=True, description="Deskew during OCR (default true)")
 
-# === New: PDF to DOCX Conversion Intent ===
 class DocxConvertIntent(BaseModel):
     """Intent to convert PDF to DOCX"""
     operation: Literal["pdf_to_docx"] = "pdf_to_docx"
     file: str = Field(..., description="PDF file to convert")
 
-# === New: Compress to Target Size Intent ===
 class CompressToTargetIntent(BaseModel):
     """Intent to compress PDF to a target size (MB)"""
     operation: Literal["compress_to_target"] = "compress_to_target"

@@ -33,29 +33,20 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
-# ============================================
-# PATTERN FAMILIES
-# ============================================
 
 class PatternFamily(str, Enum):
     """High-level pattern family categories"""
     
-    # Single operation patterns
     SINGLE_OP = "single_op"
     
-    # Two-step pipeline patterns
     TWO_STEP = "two_step"
     
-    # Three-step pipeline patterns
     THREE_STEP = "three_step"
     
-    # Target-focused patterns (compress to size)
     SIZE_TARGET = "size_target"
     
-    # Purpose-focused patterns (optimize for email)
     PURPOSE_TARGET = "purpose_target"
     
-    # Format conversion patterns
     FORMAT_CONVERT = "format_convert"
 
 
@@ -72,17 +63,12 @@ class MatchedPattern:
     case_id: Optional[str] = None  # For debugging/tracing
 
 
-# ============================================
-# REGEX PATTERN DEFINITIONS
-# ============================================
 
-# Master list of operations
 ALL_OPERATIONS = [
     "merge", "split", "compress", "convert", "ocr", "clean",
     "enhance", "rotate", "reorder", "flatten", "watermark", "page-numbers"
 ]
 
-# Operation aliases
 OP_ALIASES = {
     "combine": "merge",
     "join": "merge",
@@ -109,14 +95,12 @@ OP_ALIASES = {
     "number pages": "page-numbers",
 }
 
-# Build operation pattern (matches any operation or alias)
 OP_PATTERN_STR = "|".join(
     [re.escape(op) for op in ALL_OPERATIONS] +
     [re.escape(alias) for alias in OP_ALIASES.keys()]
 )
 OP_PATTERN = re.compile(rf"\b({OP_PATTERN_STR})\b", re.IGNORECASE)
 
-# Target format patterns
 FORMAT_PATTERNS = {
     "pdf": re.compile(r"\b(to\s+pdf|as\s+pdf|pdf\s+format|\.pdf)\b", re.IGNORECASE),
     "docx": re.compile(r"\b(to\s+docx?|as\s+docx?|word|\.docx?)\b", re.IGNORECASE),
@@ -125,14 +109,12 @@ FORMAT_PATTERNS = {
     "img": re.compile(r"\b(to\s+img|to\s+image|as\s+image)\b", re.IGNORECASE),
 }
 
-# Target size patterns (returns MB)
 SIZE_PATTERNS = [
     (re.compile(r"\b(\d+(?:\.\d+)?)\s*kb\b", re.IGNORECASE), 0.001),  # KB to MB
     (re.compile(r"\b(\d+(?:\.\d+)?)\s*mb\b", re.IGNORECASE), 1.0),     # MB
     (re.compile(r"\b(\d+(?:\.\d+)?)\s*gb\b", re.IGNORECASE), 1024.0),  # GB to MB
 ]
 
-# Named size shortcuts
 NAMED_SIZES = {
     "500kb": 0.5,
     "1mb": 1.0,
@@ -141,7 +123,6 @@ NAMED_SIZES = {
     "10mb": 10.0,
 }
 
-# Purpose patterns
 PURPOSE_PATTERNS = {
     "email": re.compile(r"\b(email|e-mail|mail|send)\b", re.IGNORECASE),
     "whatsapp": re.compile(r"\b(whatsapp|wa|whats\s*app)\b", re.IGNORECASE),
@@ -150,10 +131,8 @@ PURPOSE_PATTERNS = {
     "share": re.compile(r"\b(share|sharing)\b", re.IGNORECASE),
 }
 
-# Pipeline arrow pattern
 ARROW_PATTERN = re.compile(r"\s*[→➔\->]+\s*")
 
-# Noise prefix pattern (to strip)
 NOISE_PATTERN = re.compile(
     r"^(and|pls|plz|please|do\s+it|then|now|just|can\s+you|"
     r"i\s+want\s+to|i\s+need\s+to|help\s+me|could\s+you|would\s+you)\s+",
@@ -161,9 +140,6 @@ NOISE_PATTERN = re.compile(
 )
 
 
-# ============================================
-# PATTERN MATCHER CLASS
-# ============================================
 
 class PatternMatcher:
     """
@@ -188,22 +164,18 @@ class PatternMatcher:
             MatchedPattern if matched, None if no match
         """
         
-        # Normalize input
         normalized = self._normalize(text)
         
         if not normalized:
             return None
         
-        # Extract components
         operations = self._extract_operations(normalized)
         target_format = self._extract_format(normalized)
         target_size = self._extract_size(normalized)
         purpose = self._extract_purpose(normalized)
         
-        # Determine pattern family
         family = self._determine_family(operations, target_format, target_size, purpose)
         
-        # Calculate confidence
         confidence = self._calculate_confidence(operations, target_format, target_size, purpose)
         
         if not operations and not target_format and not purpose:
@@ -227,10 +199,8 @@ class PatternMatcher:
         
         result = text.lower().strip()
         
-        # Strip noise prefixes
         result = NOISE_PATTERN.sub("", result).strip()
         
-        # Fix common typos BEFORE other processing
         typo_fixes = {
             r"\bdog\b": "docx",
             r"\bdox\b": "docx",
@@ -247,7 +217,6 @@ class PatternMatcher:
         for typo, fix in typo_fixes.items():
             result = re.sub(typo, fix, result, flags=re.IGNORECASE)
         
-        # Normalize arrows
         result = ARROW_PATTERN.sub(" → ", result)
         
         return result
@@ -257,7 +226,6 @@ class PatternMatcher:
         
         operations = []
         
-        # Check for arrow pipeline notation
         if "→" in text:
             parts = text.split("→")
             for part in parts:
@@ -265,12 +233,10 @@ class PatternMatcher:
                 match = self.op_pattern.search(part)
                 if match:
                     op = match.group(1).lower()
-                    # Resolve aliases
                     op = OP_ALIASES.get(op, op)
                     if op not in operations:
                         operations.append(op)
         else:
-            # Find all operations
             for match in self.op_pattern.finditer(text):
                 op = match.group(1).lower()
                 op = OP_ALIASES.get(op, op)
@@ -291,12 +257,10 @@ class PatternMatcher:
     def _extract_size(self, text: str) -> Optional[float]:
         """Extract target size in MB from text"""
         
-        # Check named sizes first
         for name, size in NAMED_SIZES.items():
             if name in text.replace(" ", "").lower():
                 return size
         
-        # Check patterns
         for pattern, multiplier in self.size_patterns:
             match = pattern.search(text)
             if match:
@@ -323,19 +287,15 @@ class PatternMatcher:
     ) -> PatternFamily:
         """Determine which pattern family this matches"""
         
-        # Size-targeted operations
         if target_size:
             return PatternFamily.SIZE_TARGET
         
-        # Purpose-targeted operations
         if purpose:
             return PatternFamily.PURPOSE_TARGET
         
-        # Format conversion
         if target_format and ("convert" in operations or len(operations) == 0):
             return PatternFamily.FORMAT_CONVERT
         
-        # Multi-step pipelines
         if len(operations) >= 3:
             return PatternFamily.THREE_STEP
         elif len(operations) == 2:
@@ -354,19 +314,15 @@ class PatternMatcher:
         
         score = 0.0
         
-        # Operations detected - higher base score for clear operations
         if operations:
             score += 0.5 + (0.1 * min(len(operations), 3))
         
-        # Target format specified
         if target_format:
             score += 0.15
         
-        # Target size specified
         if target_size:
             score += 0.15
         
-        # Purpose specified
         if purpose:
             score += 0.15
         
@@ -391,31 +347,26 @@ class PatternMatcher:
         pipeline = matched.operations.copy()
         options = {}
         
-        # Add conversion if format specified but not in operations
         if matched.target_format and "convert" not in pipeline:
             if source_type != matched.target_format:
                 pipeline.append("convert")
                 options["target_format"] = matched.target_format
         
-        # Add compression if size target specified
         if matched.target_size_mb:
             if "compress" not in pipeline:
                 pipeline.insert(0, "compress")
             options["target_size_mb"] = matched.target_size_mb
         
-        # Apply purpose presets
         if matched.purpose:
             presets = PURPOSE_PRESETS.get(matched.purpose, {})
             options.update(presets)
             
-            # Ensure compress is in pipeline for purpose targets
             if "compress" not in pipeline and "max_size_mb" in presets:
                 pipeline.insert(0, "compress")
         
         return pipeline, options
 
 
-# Purpose presets
 PURPOSE_PRESETS = {
     "email": {
         "max_size_mb": 10.0,
@@ -445,9 +396,6 @@ PURPOSE_PRESETS = {
 }
 
 
-# ============================================
-# CASE ID GENERATOR (for tracing)
-# ============================================
 
 def generate_case_id(matched: MatchedPattern) -> str:
     """
@@ -455,7 +403,6 @@ def generate_case_id(matched: MatchedPattern) -> str:
     Maps the matched pattern to a case number range.
     """
     
-    # Base case ranges by family
     base_ranges = {
         PatternFamily.SINGLE_OP: 0,
         PatternFamily.TWO_STEP: 10000,
@@ -467,7 +414,6 @@ def generate_case_id(matched: MatchedPattern) -> str:
     
     base = base_ranges.get(matched.family, 0)
     
-    # Add offset based on first operation
     op_offset = {op: i * 100 for i, op in enumerate(ALL_OPERATIONS)}
     
     offset = 0
@@ -479,9 +425,6 @@ def generate_case_id(matched: MatchedPattern) -> str:
     return f"CASE-{case_num:05d}"
 
 
-# ============================================
-# CONVENIENCE FUNCTIONS
-# ============================================
 
 def match_command(text: str) -> Optional[MatchedPattern]:
     """
@@ -513,7 +456,6 @@ def get_pipeline_for_command(
         (pipeline, options)
     """
     
-    # Get source type from filename
     ext = source_file.rsplit(".", 1)[-1].lower() if "." in source_file else "pdf"
     
     matcher = PatternMatcher()
@@ -525,5 +467,4 @@ def get_pipeline_for_command(
     return matcher.match_to_pipeline(matched, ext)
 
 
-# Global matcher instance
 pattern_matcher = PatternMatcher()

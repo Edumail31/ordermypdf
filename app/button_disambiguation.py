@@ -20,9 +20,6 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
-# ============================================
-# BUTTON TYPES
-# ============================================
 
 class ButtonType(str, Enum):
     """Button types for disambiguation"""
@@ -52,11 +49,7 @@ class DisambiguationResponse:
     context_hint: Optional[str] = None
 
 
-# ============================================
-# COMMON ACTION SETS
-# ============================================
 
-# Pre-defined action sets by context
 PDF_ACTIONS = [
     ActionButton(
         id="compress_pdf",
@@ -169,7 +162,6 @@ DOCX_ACTIONS = [
     ),
 ]
 
-# Size-specific actions
 SIZE_ACTIONS = {
     "500kb": [
         ActionButton(
@@ -203,7 +195,6 @@ SIZE_ACTIONS = {
     ],
 }
 
-# Purpose-specific actions
 PURPOSE_ACTIONS = {
     "email": [
         ActionButton(
@@ -237,9 +228,6 @@ PURPOSE_ACTIONS = {
 }
 
 
-# ============================================
-# DISAMBIGUATION GENERATOR
-# ============================================
 
 class DisambiguationGenerator:
     """
@@ -276,17 +264,14 @@ class DisambiguationGenerator:
         buttons: List[ActionButton] = []
         message = "What would you like to do?"
         
-        # Priority 1: Size-specific actions
         if detected_size and detected_size.lower() in SIZE_ACTIONS:
             buttons.extend(SIZE_ACTIONS[detected_size.lower()])
             message = f"Compress to {detected_size}?"
         
-        # Priority 2: Purpose-specific actions
         elif detected_purpose and detected_purpose.lower() in PURPOSE_ACTIONS:
             buttons.extend(PURPOSE_ACTIONS[detected_purpose.lower()])
             message = f"Optimize for {detected_purpose}?"
         
-        # Priority 3: File type base actions
         else:
             file_type_lower = file_type.lower()
             
@@ -297,14 +282,11 @@ class DisambiguationGenerator:
             elif file_type_lower in ("docx", "doc"):
                 buttons.extend(self.docx_actions[:3])
             else:
-                # Default to PDF actions
                 buttons.extend(self.pdf_actions[:3])
         
-        # Prioritize based on detected operations
         if detected_operations:
             buttons = self._prioritize_by_operations(buttons, detected_operations)
         
-        # Ensure we have at least some buttons
         if not buttons:
             buttons = [
                 ActionButton(
@@ -322,11 +304,9 @@ class DisambiguationGenerator:
                 ),
             ]
         
-        # Mark first button as primary
         if buttons:
             buttons[0].button_type = ButtonType.PRIMARY
         
-        # Add cancel button
         cancel = ActionButton(
             id="cancel",
             label="❌ Cancel",
@@ -351,7 +331,6 @@ class DisambiguationGenerator:
         
         op_set = set(op.lower() for op in operations)
         
-        # Separate matching and non-matching
         matching = []
         non_matching = []
         
@@ -391,7 +370,6 @@ class DisambiguationGenerator:
         
         buttons = []
         for op in next_ops:
-            # Find matching action button
             for action in self.pdf_actions + self.image_actions + self.docx_actions:
                 if op.lower() in [p.lower() for p in action.pipeline]:
                     buttons.append(ActionButton(
@@ -402,7 +380,6 @@ class DisambiguationGenerator:
                     ))
                     break
         
-        # Add "just first op" option
         buttons.insert(0, ActionButton(
             id=f"just_{first_op}",
             label=f"Just {first_op.title()}",
@@ -418,9 +395,6 @@ class DisambiguationGenerator:
         )
 
 
-# ============================================
-# RESPONSE BUILDER
-# ============================================
 
 def build_disambiguation_ui(response: DisambiguationResponse) -> Dict[str, Any]:
     """
@@ -474,5 +448,4 @@ def handle_button_selection(
     return None
 
 
-# Global generator instance
 disambiguation_generator = DisambiguationGenerator()

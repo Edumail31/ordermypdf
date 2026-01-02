@@ -59,7 +59,6 @@ from app.utils import normalize_whitespace, fuzzy_match_string, RE_EXPLICIT_ORDE
 from app.job_queue import job_queue, JobStatus
 
 
-# Initialize error handler and pipeline registry
 error_classifier = ErrorClassifier()
 pipeline_registry = PipelineRegistry()
 
@@ -136,7 +135,6 @@ def _memory_snapshot() -> dict:
     total_mb = None
     avail_mb = None
 
-    # Linux (/proc) path (Render)
     try:
         if os.name == "posix" and os.path.exists("/proc/self/statm"):
             with open("/proc/self/statm", "r", encoding="utf-8") as f:
@@ -170,7 +168,6 @@ def _memory_snapshot() -> dict:
         total_mb = None
         avail_mb = None
 
-    # Windows fallback via ctypes (for local dev on Windows)
     if os.name == "nt":
         try:
             import ctypes
@@ -221,19 +218,15 @@ def _memory_snapshot() -> dict:
         except Exception:
             pass
 
-    # Peak RSS (posix)
     if peak_rss_mb is None and os.name == "posix":
         try:
             import resource
             ru = resource.getrusage(resource.RUSAGE_SELF)
-            # On Linux ru_maxrss is KB; on macOS it's bytes.
             peak_kb = getattr(ru, "ru_maxrss", 0) or 0
-            # Render is Linux; treat as KB.
             peak_rss_mb = round(peak_kb / 1024)
         except Exception:
             peak_rss_mb = None
 
-    # Determine level (low/medium/high) based on pressure.
     level = "low"
     try:
         if avail_mb is not None:
@@ -259,7 +252,6 @@ def _memory_snapshot() -> dict:
     if avail_mb is not None:
         out["avail_mb"] = int(avail_mb)
 
-    # Debug: log if we're missing critical fields
     if "rss_mb" not in out:
         print(f"[MEM WARNING] rss_mb missing in snapshot: {out}", file=sys.stderr)
 
@@ -335,17 +327,14 @@ def _canonicalize_button_action(label: str) -> str:
     This function converts them into stable, parser-friendly commands.
     """
     raw = normalize_whitespace(label)
-    # Strip emojis / non-ascii chars to stabilize matching.
     s = re.sub(r"[^\x00-\x7F]+", "", raw)
     s = normalize_whitespace(s)
     low = s.lower()
 
-    # Common "A to B" conversions.
     m = re.fullmatch(r"(pdf|docx|png|jpg|jpeg)\s+to\s+(pdf|docx|png|jpg|jpeg)", low)
     if m:
         return f"convert {m.group(1)} to {m.group(2)}"
 
-    # Common convert labels.
     if low.startswith("convert to "):
         return low
     if low.endswith("to docx"):
@@ -353,14 +342,12 @@ def _canonicalize_button_action(label: str) -> str:
     if low.endswith("to pdf"):
         return "convert to pdf"
 
-    # Compression labels.
     m = re.search(r"compress\s+to\s+(\d+(?:\.\d+)?)\s*(kb|mb)", low)
     if m:
         return f"compress to {m.group(1)}{m.group(2)}"
     if "compress" in low:
         return "compress"
 
-    # Other common operations.
     if "ocr" in low:
         return "ocr this"
     if "split" in low:
@@ -426,11 +413,9 @@ def _build_prompt_from_reply(base_instruction: str, question: str, user_reply: s
     reply = normalize_whitespace(user_reply)
     kind = _infer_slot_kind(question)
 
-    # If user clicked a full option (contains explicit order), just use it (use precompiled pattern).
     if kind == "order":
         if RE_EXPLICIT_ORDER.search(reply):
             return reply
-        # Some short replies like "compress first" → keep base, just append.
         return normalize_whitespace(f"{base} {reply}") if base else reply
 
     if kind == "rotate_degrees":
@@ -448,12 +433,10 @@ def _build_prompt_from_reply(base_instruction: str, question: str, user_reply: s
 
     if kind == "compress_size":
         r = reply.lower().replace(" ", "")
-        # numeric-only means MB
         if re.fullmatch(r"\d+", r):
             r = f"{r}mb"
         if re.fullmatch(r"\d+(mb|kb)", r):
             return normalize_whitespace(f"{base} compress to {r}") if base else f"compress to {r}"
-        # allow "1mb" / "to 2mb" (use precompiled pattern)
         m = RE_COMPRESS_SIZE.search(reply)
         if m:
             return normalize_whitespace(f"{base} compress to {m.group(1)}{m.group(2).lower()}") if base else f"compress to {m.group(1)}{m.group(2).lower()}"
@@ -461,7 +444,6 @@ def _build_prompt_from_reply(base_instruction: str, question: str, user_reply: s
 
     if kind in {"keep_pages", "delete_pages"}:
         r = reply.lower()
-        # user may respond "2-4" or "3" etc
         if re.fullmatch(r"\d+(\s*-\s*\d+)?(\s*,\s*\d+(\s*-\s*\d+)?)*", r):
             prefix = "keep pages" if kind == "keep_pages" else "delete pages"
             return normalize_whitespace(f"{base} {prefix} {reply}") if base else normalize_whitespace(f"{prefix} {reply}")
@@ -509,13 +491,10 @@ def _check_file_type_guards(intent: ParsedIntent | list[ParsedIntent], file_name
         primary_file = file_names[0]
         op_type = it.operation_type
         
-        # Get file type using proper function
         file_type = get_file_type(primary_file)
         if file_type is None:
-            # Unknown file type - let it proceed
             continue
         
-        # Run all guards (redundancy + compatibility)
         guard_result = check_all_guards(
             operation=op_type,
             current_type=file_type,
@@ -525,10 +504,8 @@ def _check_file_type_guards(intent: ParsedIntent | list[ParsedIntent], file_name
         
         if guard_result:
             if guard_result.action == GuardAction.SKIP:
-                # Redundant operation - skip silently
                 return False, ""
             elif guard_result.action == GuardAction.BLOCK:
-                # Incompatible operation - block with message
                 return False, guard_result.message
     
     return True, ""
@@ -544,14 +521,11 @@ def _optimize_operation_order(intents: list[ParsedIntent]) -> list[ParsedIntent]
     if len(intents) <= 1:
         return intents
     
-    # Extract operation types for pipeline matching
     op_types = [it.operation_type for it in intents]
     
     try:
-        # Try to find a matching pipeline
         pipeline = pipeline_registry.find_pipeline(op_types)
         if pipeline:
-            # Reorder intents according to pipeline
             ordered = {}
             for op in pipeline.operations:
                 for intent in intents:
@@ -559,10 +533,8 @@ def _optimize_operation_order(intents: list[ParsedIntent]) -> list[ParsedIntent]
                         ordered[op] = intent
                         break
             
-            # Return in pipeline order
             return [ordered[op] for op in pipeline.operations if op in ordered]
     except Exception:
-        # Silently fall back to original order on any error
         pass
     
     return intents
@@ -594,7 +566,6 @@ def _resolve_uploaded_filename(requested: str, uploaded_files: list[str]) -> str
                 if f.lower() == candidate.lower():
                     return f
 
-    # Use optimized fuzzy matching from utils
     best = fuzzy_match_string(req, uploaded_files, threshold=0.84)
     if best:
         return best
@@ -624,9 +595,6 @@ def _resolve_intent_filenames(intent: ParsedIntent | list[ParsedIntent], uploade
                 op.file = _resolve_uploaded_filename(op.file, uploaded_files)
 
 
-# ============================================
-# FASTAPI APP INITIALIZATION
-# ============================================
 
 app = FastAPI(
     title="OrderMyPDF",
@@ -634,7 +602,6 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Enable CORS for frontend development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -643,7 +610,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Action 10: Add request validation middleware
 try:
     from app.request_validator import validate_request_middleware
     app.middleware("http")(validate_request_middleware)
@@ -651,13 +617,7 @@ except ImportError:
     pass
 
 
-# ============================================
-# STARTUP / SHUTDOWN
-# ============================================
 
-# ============================================
-# STARTUP / SHUTDOWN
-# ============================================
 
 def cleanup_old_files():
     """
@@ -691,16 +651,12 @@ async def startup_event():
     print("[OK] OrderMyPDF started successfully")
     print(f"[OK] Using LLM model: {settings.llm_model}")
     
-    # Configure job queue processor
     job_queue.set_processor(process_job_background)
     print("[OK] Job queue system initialized")
     
-    # Start background scheduler for cleanup
     scheduler = BackgroundScheduler()
-    # Action 4: Change cleanup to 15 minutes (was 2 minutes for old cleanup)
     scheduler.add_job(cleanup_old_files, 'interval', minutes=15)  # Run cleanup every 15 minutes
     scheduler.add_job(lambda: cleanup_old_sessions(30), 'interval', minutes=10)  # Purge idle sessions
-    # Action 4+5: Job cleanup now archives to SQLite (was 5 minutes, now 5 for job archival)
     scheduler.add_job(job_queue.cleanup_old_jobs, 'interval', minutes=5)  # Archive old jobs
     scheduler.add_job(_cleanup_old_preuploads, 'interval', minutes=5)  # Clean old preuploads
     scheduler.start()
@@ -713,9 +669,6 @@ async def shutdown_event():
     print("[OK] OrderMyPDF shutting down")
 
 
-# ============================================
-# HELPER FUNCTIONS
-# ============================================
 
 async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
     """
@@ -729,7 +682,6 @@ async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
     allowed_exts = {".pdf", ".png", ".jpg", ".jpeg", ".docx"}
 
     for file in files:
-        # Validate file type
         filename_lower = (file.filename or "").lower()
         _, ext = os.path.splitext(filename_lower)
         if ext not in allowed_exts:
@@ -741,7 +693,6 @@ async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
                 ),
             )
         
-        # Validate file size
         file.file.seek(0, 2)  # Seek to end
         file_size = file.file.tell()
         file.file.seek(0)  # Reset to beginning
@@ -753,7 +704,6 @@ async def save_uploaded_files(files: List[UploadFile]) -> List[str]:
                 detail=f"File {file.filename} exceeds {settings.max_file_size_mb}MB limit"
             )
         
-        # Save file (always into uploads/)
         file_path = os.path.join("uploads", file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -826,7 +776,6 @@ def execute_operation(intent: ParsedIntent) -> tuple[str, str]:
         except Exception as e:
             err_msg = str(e)
             if err_msg.startswith("PARTIAL_SUCCESS:"):
-                # Partial success - return the best compressed file with info
                 output_file = "compressed_target_output.pdf"
                 message = err_msg.replace("PARTIAL_SUCCESS:", "")
             else:
@@ -941,16 +890,13 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
     if not intents:
         raise ValueError("No operations provided")
 
-    # Check guards before execution
     is_allowed, guard_msg = _check_file_type_guards(intents, uploaded_files)
     if not is_allowed:
         if guard_msg:
             raise ValueError(guard_msg)
         else:
-            # Operation is redundant, skip silently
             return uploaded_files[0], "Operation skipped (redundant)"
     
-    # Optimize operation order using pipeline definitions
     intents = _optimize_operation_order(intents)
 
     current_file: str | None = None
@@ -967,7 +913,6 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
             if not (name or "").lower().endswith(".docx"):
                 raise ValueError("This step requires a DOCX input file.")
 
-        # Determine input for this step
         if idx == 1:
             if intent.operation_type == "merge":
                 if not op.files or len(op.files) < 2:
@@ -976,7 +921,6 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
                 if not op.files:
                     raise ValueError("images_to_pdf requires at least 1 image")
             else:
-                # For non-merge, prefer the file specified by the model; fallback to first upload
                 if getattr(op, "file", None):
                     current_file = op.file
                 elif uploaded_files:
@@ -987,13 +931,11 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
             if current_file is None:
                 raise ValueError("Pipeline has no current file")
 
-        # Validate chain compatibility
         if idx > 1 and intent.operation_type == "merge":
             raise ValueError("Merge can only be the first step in a multi-step request")
         if idx > 1 and intent.operation_type == "images_to_pdf":
             raise ValueError("images_to_pdf can only be the first step in a multi-step request")
 
-        # If we already converted to DOCX, we cannot apply PDF ops after
         if current_file and current_file.lower().endswith(".docx") and intent.operation_type != "docx_to_pdf":
             raise ValueError("Cannot run operations after converting to DOCX (except DOCX→PDF)")
         if current_file and current_file.lower().endswith(".txt"):
@@ -1001,7 +943,6 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
         if current_file and current_file.lower().endswith(".zip"):
             raise ValueError("Cannot run operations after producing a ZIP output")
 
-        # Execute step
         if intent.operation_type == "merge":
             output_name = f"multi_step_{idx}_merged.pdf"
             current_file = merge_pdfs(op.files, output_name=output_name)
@@ -1151,9 +1092,6 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
     return current_file, " → ".join(messages)
 
 
-# ============================================
-# JOB QUEUE BACKGROUND PROCESSOR
-# ============================================
 
 def process_job_background(job_id: str):
     """
@@ -1189,7 +1127,6 @@ def process_job_background(job_id: str):
         prompt_to_parse = active_prompt
         locked_mode = bool(locked_prompt)
         
-        # Detect 'compress by X%' BEFORE calling AI parser
         print(f"[JOB {job_id}] Prompt: {active_prompt}")
         print(f"[JOB {job_id}] Files: {file_names}")
         
@@ -1241,7 +1178,6 @@ def process_job_background(job_id: str):
                     )
                     return
             else:
-                # "do the same again" / "repeat" shortcut
                 if session and session.last_success_intent is not None:
                     if re.search(r"\b(same|again|repeat|do it again|do that again)\b", (active_prompt or ""), re.IGNORECASE):
                         intent = session.last_success_intent
@@ -1265,10 +1201,8 @@ def process_job_background(job_id: str):
                         _reset_intent_lock(session)
                         return
 
-                # Use context question from request or session
                 effective_question = (context_question or "") or (session.pending_question if session else "") or ""
 
-                # Handle slot-filling for clarification flow
                 prompt_to_parse = active_prompt
                 if session and session.pending_question and session.pending_base_instruction:
                     normalized_reply = _normalize_ws(active_prompt)
@@ -1285,10 +1219,8 @@ def process_job_background(job_id: str):
 
                 job_queue.update_progress(job_id, 20, "Understanding your request...")
                 
-                # Stage 1: Try direct parse first
                 clarification_result = clarify_intent(prompt_to_parse, file_names, last_question=effective_question)
                 
-                # Stage 2: If no intent but it's a short follow-up, try rephrasing with session context
                 if not clarification_result.intent and clarification_result.clarification and session:
                     from app.clarification_layer import _rephrase_with_context
                     rephrased = _rephrase_with_context(prompt_to_parse, session.last_success_intent, file_names)
@@ -1309,7 +1241,6 @@ def process_job_background(job_id: str):
                         session.pending_question = clarification_result.clarification
                         session.pending_options = clarification_result.options
                         session.pending_base_instruction = prompt_to_parse
-                    # Return clarification as a "completed" job with options
                     job_queue.complete_job(
                         job_id,
                         "error",
@@ -1318,10 +1249,8 @@ def process_job_background(job_id: str):
                     )
                     return
 
-        # Fix common typos in filenames
         _resolve_intent_filenames(intent, file_names)
         
-        # Calculate max ETA upfront based on file size and operation
         input_total_bytes = 0
         for fn in (file_names or []):
             try:
@@ -1332,9 +1261,7 @@ def process_job_background(job_id: str):
                 pass
         input_total_mb = round(input_total_bytes / (1024 * 1024), 2) if input_total_bytes else 0.5
         
-        # Set max ETA once - this only goes DOWN, never increases
         if isinstance(intent, list):
-            # Multi-step: sum up ETAs for each operation
             total_max_eta = 0.0
             for step in intent:
                 step_eta = _eta_expected_total_seconds(step.operation_type, input_total_mb) or 30
@@ -1346,7 +1273,6 @@ def process_job_background(job_id: str):
         
         job_queue.update_progress(job_id, 40, "Processing your files...")
         
-        # Execute the operation(s)
         try:
             if isinstance(intent, list):
                 total_steps = len(intent)
@@ -1380,7 +1306,6 @@ def process_job_background(job_id: str):
         
         job_queue.update_progress(job_id, 90, "Finalizing output...")
         
-        # Delete uploaded files (keep output for download)
         try:
             for file_name in file_names:
                 upload_path = os.path.join("uploads", file_name)
@@ -1401,9 +1326,6 @@ def process_job_background(job_id: str):
         job_queue.fail_job(job_id, f"Unexpected error: {str(e)}")
 
 
-# ============================================
-# API ENDPOINTS
-# ============================================
 
 @app.get("/api/status")
 async def root():
@@ -1423,7 +1345,6 @@ async def get_ram_stats():
     return _memory_snapshot()
 
 
-# Store for pre-uploaded files (upload_id -> list of file names)
 _PREUPLOADS: dict[str, dict] = {}
 _PREUPLOADS_LOCK = Lock()
 
@@ -1434,7 +1355,6 @@ def _cleanup_old_preuploads(max_age_minutes: int = 15) -> None:
     with _PREUPLOADS_LOCK:
         stale = [uid for uid, data in _PREUPLOADS.items() if data.get("created_at", 0) < cutoff]
         for uid in stale:
-            # Also delete the uploaded files
             for fname in _PREUPLOADS[uid].get("files", []):
                 try:
                     fpath = os.path.join("uploads", fname)
@@ -1447,9 +1367,6 @@ def _cleanup_old_preuploads(max_age_minutes: int = 15) -> None:
             print(f"[PREUPLOAD CLEANUP] Removed {len(stale)} old pre-uploads")
 
 
-# ============================================
-# JOB QUEUE ENDPOINTS (New async-friendly API)
-# ============================================
 
 @app.post("/preupload")
 async def preupload_files(
@@ -1462,21 +1379,17 @@ async def preupload_files(
     This allows users to type their prompt while files are uploading.
     """
     try:
-        # Validate file count
         if len(files) > settings.max_files_per_request:
             raise HTTPException(
                 status_code=400,
                 detail=f"Too many files. Maximum {settings.max_files_per_request} files allowed."
             )
         
-        # Save uploaded files
         file_names = await save_uploaded_files(files)
         
-        # Generate upload ID
         import uuid
         upload_id = str(uuid.uuid4())[:12]
         
-        # Store the mapping
         with _PREUPLOADS_LOCK:
             _PREUPLOADS[upload_id] = {
                 "files": file_names,
@@ -1511,7 +1424,6 @@ async def submit_with_preupload(
     Use this after calling /preupload. This allows users to type prompts while files upload.
     """
     try:
-        # Get the pre-uploaded files
         with _PREUPLOADS_LOCK:
             preupload_data = _PREUPLOADS.pop(upload_id, None)
         
@@ -1529,7 +1441,6 @@ async def submit_with_preupload(
             _lock_intent(session, prompt, "button")
             prompt_to_use = session.locked_action or prompt
         
-        # Verify files still exist
         for fname in file_names:
             fpath = os.path.join("uploads", fname)
             if not os.path.exists(fpath):
@@ -1538,7 +1449,6 @@ async def submit_with_preupload(
                     detail=f"Uploaded file {fname} not found. Please re-upload."
                 )
         
-        # Create job (starts processing in background)
         job_id = job_queue.create_job(
             files=file_names,
             prompt=prompt_to_use,
@@ -1577,14 +1487,12 @@ async def submit_job(
     This is the recommended endpoint for large files or mobile devices.
     """
     try:
-        # Validate file count
         if len(files) > settings.max_files_per_request:
             raise HTTPException(
                 status_code=400,
                 detail=f"Too many files. Maximum {settings.max_files_per_request} files allowed."
             )
         
-        # Save uploaded files
         file_names = await save_uploaded_files(files)
 
         session = _get_session(session_id)
@@ -1593,7 +1501,6 @@ async def submit_job(
             _lock_intent(session, prompt, "button")
             prompt_to_use = session.locked_action or prompt
         
-        # Create job (starts processing in background)
         job_id = job_queue.create_job(
             files=file_names,
             prompt=prompt_to_use,
@@ -1632,13 +1539,11 @@ async def submit_job_reuse(
     Use this for follow-up operations on the same files to avoid re-uploading.
     """
     try:
-        # Parse file names
         files_list = [f.strip() for f in file_names.split(",") if f.strip()]
         
         if not files_list:
             raise HTTPException(status_code=400, detail="No file names provided")
         
-        # Verify all files exist
         for fname in files_list:
             fpath = get_upload_path(fname)
             if not os.path.exists(fpath):
@@ -1647,7 +1552,6 @@ async def submit_job_reuse(
                     detail=f"File not found: {fname}. Please re-upload."
                 )
         
-        # Create job (starts processing in background)
         session = _get_session(session_id)
         prompt_to_use = prompt
         if (input_source or "").lower() == "button" or _is_button_confirmation(session, prompt):
@@ -1705,29 +1609,22 @@ async def get_job_status(job_id: str):
         "ram": _memory_snapshot(),
     }
     
-    # Calculate dynamic estimated time remaining
-    # FIXED: ETA now only counts DOWN from maximum, never increases
     estimated_remaining = 0.0
     if job.started_at and job.status == JobStatus.PROCESSING:
         elapsed = time.time() - job.started_at
         
-        # If we have a max_eta set, use it as ceiling and count down
         if job.max_eta_seconds is not None:
             estimated_remaining = max(0.0, job.max_eta_seconds - elapsed)
         elif job.current_operation and job.operation_started_at and job.input_total_mb is not None:
-            # Calculate from operation context
             expected_total = _eta_expected_total_seconds(job.current_operation, job.input_total_mb)
             if expected_total is not None:
                 op_elapsed = time.time() - job.operation_started_at
                 estimated_remaining = max(0.0, expected_total - op_elapsed)
         elif job.progress > 0 and job.progress < 100:
-            # Fallback: progress-based but capped
             estimated_total = elapsed / (job.progress / 100)
-            # Cap at 3 minutes to prevent runaway estimates
             estimated_total = min(estimated_total, 180)
             estimated_remaining = max(0.0, estimated_total - elapsed)
         
-        # Minimum 5 seconds if still processing (avoid showing 0 while active)
         if estimated_remaining <= 0.0 and job.progress < 100:
             estimated_remaining = 5.0
     elif job.status == JobStatus.PENDING:
@@ -1740,7 +1637,6 @@ async def get_job_status(job_id: str):
     if job.completed_at:
         response["completed_at"] = job.completed_at
     
-    # Add result data when job is done
     if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
         response["result"] = {
             "status": job.result_status,
@@ -1806,7 +1702,6 @@ async def get_job_result(job_id: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Output file not found on server")
     
-    # Determine content type
     filename = job.result_output_file
     lower = filename.lower()
     media_type = "application/pdf"
@@ -1824,9 +1719,6 @@ async def get_job_result(job_id: str):
     )
 
 
-# ============================================
-# LEGACY SYNCHRONOUS ENDPOINT (kept for backwards compatibility)
-# ============================================
 
 
 @app.post("/process", response_model=ProcessResponse)
@@ -1861,14 +1753,12 @@ async def process_pdfs(
     """
     session: SessionState | None = None
     try:
-        # Validate file count
         if len(files) > settings.max_files_per_request:
             raise HTTPException(
                 status_code=400,
                 detail=f"Too many files. Maximum {settings.max_files_per_request} files allowed."
             )
         
-        # Save uploaded files
         file_names = await save_uploaded_files(files)
 
         session = _get_session(session_id)
@@ -1883,7 +1773,6 @@ async def process_pdfs(
         prompt_to_parse = active_prompt
         locked_mode = bool(locked_prompt)
         
-        # Detect 'compress by X%' BEFORE calling AI parser
         print(f"[REQ] Prompt: {active_prompt}")
         print(f"[REQ] Files: {file_names}")
         percent_match = re.search(r"compress( this)?( pdf)? by (\d{1,3})%", active_prompt, re.IGNORECASE)
@@ -1935,7 +1824,6 @@ async def process_pdfs(
                         options=None
                     )
             else:
-                # "do the same again" / "repeat" shortcut (must not re-parse)
                 if session and session.last_success_intent is not None:
                     if re.search(r"\b(same|again|repeat|do it again|do that again)\b", (active_prompt or ""), re.IGNORECASE):
                         intent = session.last_success_intent
@@ -1965,11 +1853,8 @@ async def process_pdfs(
                             message=message,
                         )
 
-                # Prefer UI-provided question; fallback to session's last asked question.
                 effective_question = (context_question or "") or (session.pending_question if session else "") or ""
 
-                # If we have a pending question, treat short replies as slot values and rebuild
-                # a full prompt that preserves already-locked steps.
                 prompt_to_parse = active_prompt
                 if session and session.pending_question and session.pending_base_instruction:
                     normalized_reply = _normalize_ws(active_prompt)
@@ -1977,7 +1862,6 @@ async def process_pdfs(
                     if normalized_reply and normalized_reply in normalized_options:
                         prompt_to_parse = active_prompt
                     else:
-                        # Numeric-only or very short replies are almost always slot-fills.
                         if len(normalized_reply.split()) <= 6 or re.fullmatch(r"[0-9,\-\s]+", (active_prompt or "").strip()):
                             prompt_to_parse = _build_prompt_from_reply(
                                 session.pending_base_instruction,
@@ -1987,7 +1871,6 @@ async def process_pdfs(
 
                 clarification_result = clarify_intent(prompt_to_parse, file_names, last_question=effective_question)
                 
-                # Stage 2: If no intent but it's a short follow-up, try rephrasing with session context
                 if not clarification_result.intent and clarification_result.clarification and session:
                     from app.clarification_layer import _rephrase_with_context
                     rephrased = _rephrase_with_context(prompt_to_parse, session.last_success_intent, file_names)
@@ -2007,7 +1890,6 @@ async def process_pdfs(
                     if session:
                         session.pending_question = clarification_result.clarification
                         session.pending_options = clarification_result.options
-                        # Persist the full plan prompt so far, not the raw short reply.
                         session.pending_base_instruction = prompt_to_parse
                     return ProcessResponse(
                         status="error",
@@ -2015,10 +1897,8 @@ async def process_pdfs(
                         options=clarification_result.options
                     )
 
-        # Fix common typos in filenames chosen by the model (or user)
         _resolve_intent_filenames(intent, file_names)
         
-        # Execute the operation(s)
         try:
             if isinstance(intent, list):
                 output_file, message = execute_operation_pipeline(intent, file_names)
@@ -2036,21 +1916,17 @@ async def process_pdfs(
             raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
 
         if session:
-            # If we rebuilt a prompt via slot filling, keep that as the canonical plan prompt.
             try:
                 session.last_success_prompt = prompt_to_parse  # type: ignore[name-defined]
             except Exception:
                 session.last_success_prompt = prompt
             session.last_success_intent = intent
         
-        # Delete only the uploaded files (keep output file for download)
         try:
             for file_name in file_names:
                 upload_path = os.path.join("uploads", file_name)
                 if os.path.exists(upload_path):
                     os.remove(upload_path)
-            # Note: Output file is kept available for download
-            # Users can download it via /download/{filename} endpoint
         except Exception as cleanup_err:
             print(f"Warning: Failed to cleanup uploaded files: {cleanup_err}")
 
@@ -2085,7 +1961,6 @@ async def download_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     
-    # Serve correct content-type for non-PDF outputs
     lower = filename.lower()
     media_type = "application/pdf"
     if lower.endswith(".docx"):
@@ -2111,12 +1986,10 @@ async def cleanup_temp_files():
     automatic cleanup with scheduled tasks or TTL.
     """
     try:
-        # Clear uploads
         if os.path.exists("uploads"):
             for file in os.listdir("uploads"):
                 os.remove(os.path.join("uploads", file))
         
-        # Clear outputs
         if os.path.exists("outputs"):
             for file in os.listdir("outputs"):
                 os.remove(os.path.join("outputs", file))
@@ -2127,16 +2000,10 @@ async def cleanup_temp_files():
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 
-# ============================================
-# STATIC FILES (Pre-built frontend)
-# ============================================
-# IMPORTANT: Register static files AFTER all other routes
-# so that API endpoints take priority
 
 if os.path.exists(FRONTEND_DIST_DIR):
     print("[OK] Frontend dist folder found - serving static files")
     
-    # Mount assets directory with specific path (doesn't conflict with /api or /process)
     try:
         from fastapi.staticfiles import StaticFiles
         app.mount(
@@ -2158,17 +2025,12 @@ if os.path.exists(FRONTEND_INDEX_FILE):
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend_spa_fallback(full_path: str):
-        # Let real API routes take priority (this handler is registered last).
-        # If a requested file exists in dist (e.g., favicon), serve it; otherwise serve SPA index.
         candidate = os.path.join(FRONTEND_DIST_DIR, full_path)
         if os.path.isfile(candidate):
             return FileResponse(candidate)
         return FileResponse(FRONTEND_INDEX_FILE, media_type="text/html")
 
 
-# ============================================
-# RUN SERVER (for development)
-# ============================================
 
 if __name__ == "__main__":
     import uvicorn

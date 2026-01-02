@@ -42,20 +42,17 @@ class JobInfo:
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
 
-    # Operation context (for realtime ETA)
     current_operation: Optional[str] = None
     operation_started_at: Optional[float] = None
     input_total_mb: Optional[float] = None
     max_eta_seconds: Optional[float] = None  # Maximum ETA set once at start, only counts down
     
-    # Input data
     files: list[str] = field(default_factory=list)
     prompt: str = ""
     session_id: Optional[str] = None
     context_question: Optional[str] = None
     input_source: Optional[str] = None  # text | llm | button
     
-    # Output data
     result_status: Optional[str] = None  # "success" or "error"
     result_message: Optional[str] = None
     result_operation: Optional[str] = None
@@ -86,7 +83,6 @@ class JobQueue:
         self._processing_count = 0
         self._processor_func: Optional[Callable] = None
         
-        # Initialize archive (Action 5)
         self._archive = None
         try:
             from app.job_archive import job_archive
@@ -121,7 +117,6 @@ class JobQueue:
         with self._lock:
             self._jobs[job_id] = job
         
-        # Start processing in background
         self._start_processing(job_id)
         
         return job_id
@@ -183,7 +178,6 @@ class JobQueue:
             
             for jid in stale_ids:
                 job = self._jobs.pop(jid, None)
-                # Archive to SQLite (Action 5)
                 if job and self._archive:
                     try:
                         self._archive.archive_job(job)
@@ -204,7 +198,6 @@ class JobQueue:
         if not job:
             return
         
-        # Wait for a slot if at capacity
         while True:
             with self._lock:
                 if self._processing_count < self._max_concurrent:
@@ -213,7 +206,6 @@ class JobQueue:
             time.sleep(0.5)
         
         try:
-            # Check if cancelled while waiting
             with self._lock:
                 if job.status == JobStatus.CANCELLED:
                     return
@@ -222,7 +214,6 @@ class JobQueue:
                 job.progress = 5
                 job.progress_message = "Starting processing..."
             
-            # Run the actual processor
             if self._processor_func:
                 self._processor_func(job_id)
             else:
@@ -285,5 +276,4 @@ class JobQueue:
             }
 
 
-# Global job queue instance - max 1 concurrent to stay under 512MB RAM
 job_queue = JobQueue(max_concurrent=1, cleanup_after_minutes=15)

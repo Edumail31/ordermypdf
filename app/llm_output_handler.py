@@ -23,9 +23,6 @@ UI Contract (ONLY allowed format):
 from typing import Any, Optional, List, Dict, Union
 
 
-# ============================================
-# INTERNAL KEYS TO STRIP (UI Protection)
-# ============================================
 
 INTERNAL_KEYS = {
     "clarification",
@@ -42,9 +39,6 @@ INTERNAL_KEYS = {
 }
 
 
-# ============================================
-# SAFE ACCESS LAYER (MANDATORY)
-# ============================================
 
 def safe_get(data: Any, key: str, default: Any = None) -> Any:
     """
@@ -95,9 +89,6 @@ def safe_get_nested(data: Any, *keys: str, default: Any = None) -> Any:
     return current if current is not None else default
 
 
-# ============================================
-# INTERNAL KEY STRIPPING (UI Protection)
-# ============================================
 
 def strip_internal_keys(data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -140,9 +131,6 @@ def strip_internal_recursive(data: Any) -> Any:
     return data
 
 
-# ============================================
-# NORMALIZATION LAYER (UI Boundary)
-# ============================================
 
 class UIResponseType:
     """Response types for UI contract"""
@@ -185,12 +173,10 @@ def normalize_for_ui(
     action = safe_get(llm_output, "action")
     operation_type = safe_get(llm_output, "operation_type")
     
-    # Get message and options from various sources
     message = override_message
     options = override_options or []
     
     if not message:
-        # Try to get from LLM output
         message = safe_get(llm_output, "question")
         if not message and session:
             message = getattr(session, "last_question", None) or getattr(session, "pending_question", None)
@@ -200,11 +186,9 @@ def normalize_for_ui(
         if not options and session:
             options = getattr(session, "last_options", None) or getattr(session, "pending_options", None) or []
     
-    # Ensure options is always a list
     if not isinstance(options, list):
         options = []
     
-    # Determine response type
     if needs_clarification:
         return {
             "type": UIResponseType.QUESTION,
@@ -290,9 +274,6 @@ def create_error_response(
     return response
 
 
-# ============================================
-# INFINITE LOOP PREVENTION
-# ============================================
 
 def check_clarification_loop(
     llm_output: Dict[str, Any],
@@ -313,7 +294,6 @@ def check_clarification_loop(
     if session is None:
         return None
     
-    # Get last response type from session
     last_response_type = getattr(session, "last_response_type", None)
     needs_clarification = safe_get(llm_output, "needs_clarification", False)
     
@@ -339,9 +319,6 @@ def update_session_response_type(session: Any, response_type: str) -> None:
         session.last_response_type = response_type
 
 
-# ============================================
-# VALIDATION HELPERS
-# ============================================
 
 def validate_llm_output(llm_output: Any) -> bool:
     """
@@ -356,7 +333,6 @@ def validate_llm_output(llm_output: Any) -> bool:
     if not isinstance(llm_output, dict):
         return False
     
-    # Must have either operation_type or needs_clarification
     has_operation = safe_get(llm_output, "operation_type") is not None
     has_clarification = safe_get(llm_output, "needs_clarification", False)
     has_multi_op = safe_get(llm_output, "is_multi_operation", False)
@@ -377,7 +353,6 @@ def extract_options_safely(llm_output: Dict[str, Any]) -> List[str]:
     options = safe_get(llm_output, "options", [])
     if not isinstance(options, list):
         return []
-    # Ensure all options are strings
     return [str(opt) for opt in options if opt is not None]
 
 
@@ -397,14 +372,9 @@ def extract_operation_type(llm_output: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-# ============================================
-# UI RULES ENFORCEMENT
-# ============================================
 
-# Keys that UI MAY read
 UI_ALLOWED_KEYS = {"message", "options", "type", "action", "status", "operation", "output_file"}
 
-# Keys that UI MUST NEVER read directly
 UI_FORBIDDEN_KEYS = {"intent", "clarification", "analysis", "reasoning", "confidence", "llm_raw"}
 
 
@@ -423,10 +393,8 @@ def enforce_ui_contract(response: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(response, dict):
         return {"type": UIResponseType.ERROR, "message": "Invalid response format"}
     
-    # Remove any forbidden keys
     cleaned = {k: v for k, v in response.items() if k not in UI_FORBIDDEN_KEYS}
     
-    # Ensure required keys exist
     if "type" not in cleaned:
         cleaned["type"] = UIResponseType.ERROR
     if "message" not in cleaned:

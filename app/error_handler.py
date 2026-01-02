@@ -27,39 +27,31 @@ logger = logging.getLogger(__name__)
 
 class ErrorType(str, Enum):
     """Enumeration of all error types"""
-    # Layer 1: User Input Errors
     TYPO = "typo"
     SHORTHAND = "shorthand"
     VAGUE_INTENT = "vague_intent"
     
-    # Layer 2: Pipeline Planning Errors
     CONFLICTING_OPS = "conflicting_ops"
     MISSING_PARAMETER = "missing_parameter"
     INVALID_OPERATION_ORDER = "invalid_operation_order"
     
-    # Layer 3: File Content Errors
     XML_UNICODE_ERROR = "xml_unicode_error"
     FAKE_TEXT_LAYER = "fake_text_layer"
     BROKEN_FONTS = "broken_fonts"
     
-    # Layer 4: File Type Compatibility Errors
     TYPE_INCOMPATIBLE = "type_incompatible"
     OPERATION_NOT_SUPPORTED_FOR_TYPE = "operation_not_supported_for_type"
     
-    # Layer 5: Execution Errors
     PDF_PARSING_FAILURE = "pdf_parsing_failure"
     OCR_ENGINE_FAILURE = "ocr_engine_failure"
     CONVERSION_CRASH = "conversion_crash"
     
-    # Layer 6: Resource Errors
     OUT_OF_MEMORY = "out_of_memory"
     TIMEOUT = "timeout"
     
-    # Layer 7: Output Integrity Errors
     EMPTY_OUTPUT = "empty_output"
     CORRUPT_FILE = "corrupt_file"
     
-    # Layer 8: Unsupported Features
     UNSUPPORTED_FEATURE = "unsupported_feature"
 
 
@@ -85,7 +77,6 @@ class ErrorClassification:
 class ErrorClassifier:
     """Classifies and handles errors across all layers"""
     
-    # Layer 4: File Type Compatibility Matrix
     OPERATION_FILE_TYPE_MATRIX = {
         "merge": {"valid": ["pdf"], "message": "Merge supports PDFs only"},
         "split": {"valid": ["pdf"], "message": "Split supports PDFs only"},
@@ -101,7 +92,6 @@ class ErrorClassifier:
         "convert_to_docx": {"valid": ["pdf"], "message": "Conversion"},
     }
     
-    # Layer 1: Common typos and their corrections
     TYPO_CORRECTIONS = {
         "compres": "compress",
         "cnvert": "convert",
@@ -121,7 +111,6 @@ class ErrorClassifier:
         "rotae": "rotate",
     }
     
-    # Layer 1: Shorthand expansions
     SHORTHAND_EXPANSIONS = {
         "to doc": "convert to docx",
         "to img": "convert to image",
@@ -141,7 +130,6 @@ class ErrorClassifier:
         "college submission": "ocr and compress",
     }
     
-    # Layer 8: Unsupported features
     UNSUPPORTED_FEATURES = {
         "to excel": "PDF to Excel conversion not supported yet",
         "to xlsx": "PDF to Excel conversion not supported yet",
@@ -181,7 +169,6 @@ class ErrorClassifier:
         Check for redundant operations (e.g., image → to_image, pdf → to_pdf)
         Returns ErrorClassification if redundant, None otherwise.
         """
-        # Skip operations with helpful messages
         skip_cases = {
             ("convert_to_image", "jpg"): "This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.",
             ("convert_to_image", "png"): "This file is already an image. Try 'compress', 'to pdf', or 'rotate' instead.",
@@ -291,7 +278,6 @@ class ErrorClassifier:
         Classify execution errors (parsing failure, OCR failure, conversion crash).
         Determine if error is auto-recoverable.
         """
-        # OCR failures can retry with enhanced image
         if "ocr" in error_message.lower() or "tesseract" in error_message.lower():
             return ErrorClassification(
                 error_type=ErrorType.OCR_ENGINE_FAILURE,
@@ -303,7 +289,6 @@ class ErrorClassifier:
                 recovery_action="enhance_then_retry"
             )
         
-        # PDF parsing failures might be fixable with repair
         if "pdf" in error_message.lower() and ("parse" in error_message.lower() or "corrupt" in error_message.lower()):
             return ErrorClassification(
                 error_type=ErrorType.PDF_PARSING_FAILURE,
@@ -315,7 +300,6 @@ class ErrorClassifier:
                 recovery_action="repair_then_retry"
             )
         
-        # Font/XML errors can use OCR fallback
         if "font" in error_message.lower() or "xml" in error_message.lower():
             return ErrorClassification(
                 error_type=ErrorType.FILE_CONTENT_ERRORS if "xml" in error_message.lower() else ErrorType.BROKEN_FONTS,
@@ -327,7 +311,6 @@ class ErrorClassifier:
                 recovery_action="ocr_fallback"
             )
         
-        # Generic conversion crash
         return ErrorClassification(
             error_type=ErrorType.CONVERSION_CRASH,
             severity=ErrorSeverity.HIGH,
@@ -406,7 +389,6 @@ class ErrorClassifier:
         )
 
 
-# Retry policy constants
 MAX_RETRIES = 1  # Never infinite loops
 RETRY_ACTIONS = {
     "enhance_then_retry": "Enhance image and retry OCR",
