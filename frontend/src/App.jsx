@@ -1015,20 +1015,37 @@ export default function App() {
     if (!incoming.length) return;
 
     // Check for mixed file formats IMMEDIATELY when selecting files
+    // Backend only supports PDF and images (png/jpg/jpeg)
     const getExt = (name) => (name || "").toLowerCase().split(".").pop();
     const getCategory = (ext) => {
       if (ext === "pdf") return "pdf";
       if (["png", "jpg", "jpeg"].includes(ext)) return "image";
-      if (ext === "docx" || ext === "doc") return "docx";
-      return "other";
+      return "unsupported"; // Backend only supports PDF and images
     };
     
+    // Check incoming files for unsupported types first
+    const unsupportedFiles = incoming.filter((f) => getCategory(getExt(f.name)) === "unsupported");
+    if (unsupportedFiles.length > 0) {
+      setToast({
+        message: `⚠️ Unsupported file type: ${unsupportedFiles[0].name}. Only PDF and images (PNG/JPG) are supported.`,
+        exiting: false,
+      });
+      setTimeout(() => {
+        setToast((t) => (t ? { ...t, exiting: true } : null));
+        setTimeout(() => setToast(null), 300);
+      }, 5000);
+      return; // Block unsupported files
+    }
+
+    // Check for mixed file formats (PDF + images not allowed together)
     const allFiles = [...files, ...incoming];
     if (allFiles.length > 1) {
       const categories = new Set(allFiles.map((f) => getCategory(getExt(f.name))));
+      // Remove "unsupported" from categories check since we already blocked those above
+      categories.delete("unsupported");
       if (categories.size > 1) {
         setToast({
-          message: "⚠️ Please upload files of the same type (all PDFs, all images, or all DOCX). Mixed formats are not supported.",
+          message: "⚠️ Please upload files of the same type. You can't mix PDFs and images together.",
           exiting: false,
         });
         setTimeout(() => {
@@ -1898,7 +1915,7 @@ export default function App() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      accept="application/pdf,image/png,image/jpeg"
                       multiple
                       onChange={handleFileChange}
                       className="hidden"

@@ -1050,6 +1050,90 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         return ClarificationResult(clarification=UNSUPPORTED_REPLY)
 
     # ============================================
+    # VAGUE COMMAND DETECTION
+    # Catch commands like "do it", "why not", random text early
+    # Provide helpful options instead of letting them fail with 400
+    # ============================================
+    def _is_vague_command(prompt: str) -> bool:
+        """Detect vague/meaningless commands that need clarification."""
+        p = (prompt or "").strip().lower()
+        if not p:
+            return True
+        # Very short commands without any operation keywords
+        if len(p) < 3:
+            return True
+        # Common vague phrases
+        vague_patterns = [
+            r"^do\s*(it|this|that)?$",
+            r"^why\s*(not)?$",
+            r"^ok(ay)?$",
+            r"^yes$",
+            r"^no$",
+            r"^sure$",
+            r"^go\s*(ahead)?$",
+            r"^start$",
+            r"^run$",
+            r"^execute$",
+            r"^process$",
+            r"^proceed$",
+            r"^begin$",
+            r"^make\s*it$",
+            r"^fix\s*(it)?$",
+            r"^help$",
+            r"^what$",
+            r"^how$",
+            r"^huh$",
+            r"^eh$",
+            r"^idk$",
+            r"^dunno$",
+            r"^whatever$",
+        ]
+        for pattern in vague_patterns:
+            if re.match(pattern, p):
+                return True
+        # Random gibberish detection - no recognizable words
+        recognizable_words = [
+            "merge", "combine", "join", "split", "extract", "keep", "delete", "remove",
+            "compress", "reduce", "shrink", "small", "convert", "pdf", "docx", "word",
+            "png", "jpg", "jpeg", "image", "rotate", "turn", "flip", "reorder", "swap",
+            "reverse", "watermark", "page", "number", "ocr", "scan", "enhance", "flatten",
+            "optimize", "text", "to", "into", "as", "from", "all", "first", "last"
+        ]
+        has_recognizable = any(word in p for word in recognizable_words)
+        if not has_recognizable and len(p.split()) <= 3:
+            return True
+        return False
+
+    if _is_vague_command(prompt_compact) and file_names:
+        # Provide helpful options based on file type
+        primary = file_names[0]
+        primary_lower = (primary or "").lower()
+        
+        if primary_lower.endswith('.pdf'):
+            if len(file_names) >= 2:
+                options = ["merge all files", "compress files", "split first page"]
+            else:
+                options = ["compress", "split first page", "convert to docx", "rotate 90 degrees"]
+            return ClarificationResult(
+                clarification="What would you like to do with your PDF? Here are some options:",
+                options=options
+            )
+        elif primary_lower.endswith(('.png', '.jpg', '.jpeg')):
+            if len(file_names) >= 2:
+                options = ["combine into PDF", "enhance images"]
+            else:
+                options = ["convert to PDF", "enhance", "OCR to searchable PDF"]
+            return ClarificationResult(
+                clarification="What would you like to do with your image? Here are some options:",
+                options=options
+            )
+        else:
+            return ClarificationResult(
+                clarification="What would you like to do? Please describe the operation (e.g., 'compress', 'merge', 'split page 1').",
+                options=["compress", "merge", "split first page"]
+            )
+
+    # ============================================
     # HARDCODED REDUNDANCY & COMPATIBILITY GUARDS
     # Per spec: Never throw generic errors. Skip, auto-fix, or block with clear message.
     # Smart behavior: Convert valid cross-type operations automatically.
