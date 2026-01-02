@@ -40,152 +40,150 @@ function cn(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
-// Lightweight inline SVG icons (no external dependencies)
+// Lightweight inline SVG icons - Lucide-inspired professional design
 const Icons = {
   pdf: (
-    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM9 13h2v5H9v-5zm4 0h2v5h-2v-5z" />
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13 3v5a1 1 0 001 1h5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-6 4h4" />
     </svg>
   ),
   bolt: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   ),
   robot: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2zM7.5 13a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9 18h6v1H9v-1z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <rect x="3" y="11" width="18" height="10" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="12" cy="5" r="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v4M8 15h.01M16 15h.01"/>
     </svg>
   ),
   shield: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
     </svg>
   ),
   copy: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <rect x="9" y="9" width="13" height="13" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
     </svg>
   ),
   spinner: (
-    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
+    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" />
+      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
   ),
   circle: (
-    <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" />
+    <svg className="w-2 h-2" viewBox="0 0 8 8">
+      <circle cx="4" cy="4" r="3" fill="currentColor" />
     </svg>
   ),
   check: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     </svg>
   ),
   folder: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
     </svg>
   ),
   file: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" />
+      <polyline strokeLinecap="round" strokeLinejoin="round" points="14 2 14 8 20 8" />
     </svg>
   ),
   play: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M8 5v14l11-7z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <polygon strokeLinecap="round" strokeLinejoin="round" points="6 3 20 12 6 21 6 3" />
     </svg>
   ),
   download: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
     </svg>
   ),
   clock: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
     </svg>
   ),
   lightbulb: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.74V17a1 1 0 001 1h6a1 1 0 001-1v-2.26A7 7 0 0012 2z" />
     </svg>
   ),
   wand: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M7.5 5.6L10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7l2.5-1.4zm12 9.8L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14l-2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zM9.4 10.6L2 18l4 4 7.4-7.4-4-4zm-1.4 7L6.6 19 5 17.4l1.4-1.4 1.6 1.6z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 11.8L11 13M12.2 6.2L11 5M15 9a3 3 0 11-6 0 3 3 0 016 0zM3 21l9-9" />
     </svg>
   ),
   arrow: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M10 17l5-5-5-5v10z" />
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
     </svg>
   ),
   signal: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M2 22h2V12H2v10zm4 0h2V9H6v13zm4 0h2V6h-2v16zm4 0h2V2h-2v20zm4 0h2v-8h-2v8z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 20v-6M10 20v-9M14 20V10M18 20V4" />
     </svg>
   ),
   export: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
     </svg>
   ),
   stop: (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M6 6h12v12H6z" />
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <rect x="6" y="6" width="12" height="12" rx="1" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
   clipboard: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 16H5V5h2v2h10V5h2v14z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+      <rect x="9" y="3" width="6" height="4" rx="1" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
   minus: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 13H5v-2h14v2z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
     </svg>
   ),
   error: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4M12 16h.01" />
     </svg>
   ),
   question: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
     </svg>
   ),
   checkCircle: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round"/>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
     </svg>
   ),
   upload: (
-    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z" />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
     </svg>
   ),
   cog: (
-    <svg
-      className="w-4 h-4 animate-spin"
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z" />
+    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
 };
@@ -1023,9 +1021,11 @@ export default function App() {
       if (ext === "docx") return "docx";
       return "unsupported";
     };
-    
+
     // Check incoming files for unsupported types first
-    const unsupportedFiles = incoming.filter((f) => getCategory(getExt(f.name)) === "unsupported");
+    const unsupportedFiles = incoming.filter(
+      (f) => getCategory(getExt(f.name)) === "unsupported"
+    );
     if (unsupportedFiles.length > 0) {
       setToast({
         message: `⚠️ Unsupported file type: ${unsupportedFiles[0].name}. Only PDF, images (PNG/JPG), and DOCX are supported.`,
@@ -1041,12 +1041,15 @@ export default function App() {
     // Check for mixed file formats (different types not allowed together)
     const allFiles = [...files, ...incoming];
     if (allFiles.length > 1) {
-      const categories = new Set(allFiles.map((f) => getCategory(getExt(f.name))));
+      const categories = new Set(
+        allFiles.map((f) => getCategory(getExt(f.name)))
+      );
       // Remove "unsupported" from categories check since we already blocked those above
       categories.delete("unsupported");
       if (categories.size > 1) {
         setToast({
-          message: "⚠️ Please upload files of the same type. You can't mix PDFs, images, and DOCX together.",
+          message:
+            "⚠️ Please upload files of the same type. You can't mix PDFs, images, and DOCX together.",
           exiting: false,
         });
         setTimeout(() => {
@@ -1657,49 +1660,49 @@ export default function App() {
   }, [ramStats]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+    <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] font-sans antialiased">
       <div className="cursor-glow" aria-hidden="true" />
 
-      {/* Toast notification for large files - centered on all devices */}
+      {/* Toast notification for large files - with glass effect */}
       {toast && (
         <div
           className={cn(
-            "fixed top-4 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-50 px-4 py-3 rounded-xl border shadow-lg bg-slate-900/95 max-w-sm mx-auto md:mx-0",
-            "border-amber-400/40 text-amber-100",
+            "fixed top-4 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-50 px-4 py-3 rounded-xl max-w-sm mx-auto md:mx-0",
+            "glass border-amber-500/20 text-amber-100 shadow-lg",
             toast.exiting ? "toast-exit" : "toast-enter"
           )}
         >
           <div className="flex items-center gap-3 justify-center text-center">
-            <span className="text-amber-300 shrink-0">{Icons.clock}</span>
+            <span className="text-amber-400 shrink-0">{Icons.clock}</span>
             <span className="text-sm font-medium">{toast.message}</span>
           </div>
         </div>
       )}
 
-      <div className="pointer-events-none fixed inset-0 opacity-70">
-        <div className="absolute -top-24 left-1/2 h-64 w-[42rem] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute bottom-[-6rem] right-[-6rem] h-72 w-72 rounded-full bg-teal-500/10 blur-3xl" />
+      {/* Subtle ambient background glow */}
+      <div className="pointer-events-none fixed inset-0 opacity-50">
+        <div className="absolute -top-40 left-1/3 h-96 w-[60rem] -translate-x-1/2 rounded-full bg-blue-500/5 blur-[120px]" />
+        <div className="absolute bottom-[-10rem] right-[-10rem] h-96 w-96 rounded-full bg-indigo-500/5 blur-[120px]" />
+        <div className="absolute top-1/2 left-[-10rem] h-64 w-64 rounded-full bg-cyan-500/3 blur-[100px]" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-5 px-4 py-7">
-        <header className="flex flex-col gap-2">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
-              <span className="text-cyan-400/90">{Icons.pdf}</span>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-6">
+        <header className="flex flex-col gap-3">
+          <div className="space-y-3">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
+              <span className="text-[var(--accent-primary)] drop-shadow-[0_0_8px_rgba(59,130,246,0.4)]">{Icons.pdf}</span>
               <span className="relative">
-                <span className="absolute -inset-2 -z-10 rounded-2xl bg-cyan-400/10 blur-xl" />
-                <span className="bg-gradient-to-r from-cyan-200 via-cyan-100 to-teal-200 bg-clip-text text-transparent drop-shadow-[0_0_16px_rgba(34,211,238,0.35)]">
+                <span className="absolute -inset-3 -z-10 rounded-2xl bg-[var(--accent-primary)]/6 blur-2xl" />
+                <span className="bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent drop-shadow-sm">
                   OrderMyPDF
                 </span>
               </span>
             </h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-slate-300">
-              <span className="text-amber-400/80 mr-1 inline-block">
+            <p className="max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">
+              <span className="text-[var(--accent-primary)] mr-1.5 inline-block">
                 {Icons.bolt}
               </span>
-              Merge, split, compress, OCR, convert (PDF ↔ DOCX/JPG/PNG), remove
-              blank/duplicate pages, enhance scans, and flatten PDFs — just
-              upload and describe.
+              Professional document processing — merge, split, compress, OCR, convert, and more. Upload your files and describe what you need.
             </p>
           </div>
         </header>
@@ -1707,39 +1710,39 @@ export default function App() {
         <main className="grid gap-6 md:grid-cols-[1fr_18rem] items-start">
           {/* Mobile Session (compact, above console) */}
           <div className="md:hidden w-full">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-slate-200 flex items-center gap-2">
-                    <span className="text-cyan-400/80">{Icons.clipboard}</span>
+            <div className="glass-card rounded-2xl p-3 hover-glow transition-all duration-300">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-2">
+                    <span className="text-[var(--accent-primary)]">{Icons.clipboard}</span>
                     Session
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-400 truncate">
+                  <div className="mt-1 text-[10px] text-[var(--text-muted)] truncate max-w-[10rem]">
                     {files.length
                       ? lastFileName || files[0]?.name
                       : "No files selected"}
                   </div>
                 </div>
-                <div className="shrink-0 flex items-center gap-2">
-                  <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300">
+                <div className="shrink-0 flex items-center gap-1.5">
+                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
                     {fileBadge}
                   </span>
                   <span
                     className={cn(
-                      "rounded-full border px-3 py-1 text-[11px] flex items-center gap-1.5",
+                      "rounded-full border px-2 py-0.5 text-[10px] flex items-center gap-1 transition-colors duration-200",
                       loading
-                        ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
-                        : "border-white/10 bg-black/20 text-slate-300"
+                        ? "border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
+                        : "border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                     )}
                   >
                     {loading ? (
                       <>
-                        <span className="text-cyan-300">{Icons.spinner}</span>
+                        <span className="text-[var(--accent-primary)]">{Icons.spinner}</span>
                         {isUploading ? "Uploading" : "Processing"}
                       </>
                     ) : (
                       <>
-                        <span className="text-green-400">{Icons.circle}</span>
+                        <span className="text-emerald-400">{Icons.circle}</span>
                         Ready
                       </>
                     )}
@@ -1748,12 +1751,12 @@ export default function App() {
               </div>
 
               {/* Live RAM indicator (mobile) - always visible */}
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-300">
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
                 <span className={cn(ramIndicator.className)}>
                   {Icons.circle}
                 </span>
-                <span className="text-slate-200">RAM</span>
-                <span className="text-slate-400">
+                <span className="text-[var(--text-primary)]">RAM</span>
+                <span className="text-[var(--text-muted)]">
                   {ramStats
                     ? `${ramStats.rss_mb || ramStats.peak_rss_mb || "—"}MB`
                     : "Loading..."}
@@ -1762,48 +1765,48 @@ export default function App() {
             </div>
           </div>
 
-          <section className="rounded-3xl border border-white/10 bg-white/5 shadow-[0_8px_40px_rgba(0,0,0,0.35)] w-full max-w-[95vw] md:max-w-none">
-            <div className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <section className="glass-card rounded-2xl border border-[var(--glass-border)] shadow-[var(--shadow-card)] w-full max-w-[95vw] md:max-w-none transition-all duration-300 hover:shadow-[var(--shadow-glow)]">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-5 py-4 md:px-6">
               <div className="space-y-1">
-                <div className="text-sm font-medium text-white flex items-center gap-2">
-                  <span className="text-cyan-400">{Icons.robot}</span>
+                <div className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+                  <span className="text-[var(--accent-primary)] drop-shadow-[0_0_6px_rgba(59,130,246,0.5)]">{Icons.robot}</span>
                   Agent Console
                 </div>
-                <div className="text-xs text-slate-400 flex items-center gap-1">
-                  <span className="text-slate-500">{Icons.shield}</span>
-                  Files processed securely, never stored.
+                <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5">
+                  <span className="text-[var(--text-muted)]">{Icons.shield}</span>
+                  Files processed securely, never stored
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300 flex items-center gap-1.5">
-                  <span className="text-slate-400">{Icons.copy}</span>
+              <div className="hidden md:flex items-center gap-2">
+                <span className="glass-subtle rounded-full px-3 py-1 text-[11px] text-[var(--text-secondary)] flex items-center gap-1.5 hover-scale cursor-default">
+                  <span className="text-[var(--text-muted)]">{Icons.copy}</span>
                   {fileBadge}
                 </span>
 
                 {/* RAM pill - always visible */}
-                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300 flex items-center gap-1.5">
+                <span className="glass-subtle rounded-full px-3 py-1 text-[11px] text-[var(--text-secondary)] flex items-center gap-1.5 hover-scale cursor-default">
                   <span className={cn(ramIndicator.className)}>
                     {Icons.circle}
                   </span>
-                  <span className="text-slate-200">{ramPillText}</span>
+                  <span className="text-[var(--text-primary)]">{ramPillText}</span>
                 </span>
 
                 <span
                   className={cn(
-                    "rounded-full border px-3 py-1 text-[11px] flex items-center gap-1.5",
+                    "rounded-full border px-3 py-1 text-[11px] flex items-center gap-1.5 transition-colors duration-200",
                     loading
-                      ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
-                      : "border-white/10 bg-black/20 text-slate-300"
+                      ? "border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
+                      : "border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                   )}
                 >
                   {loading ? (
                     <>
-                      <span className="text-cyan-300">{Icons.spinner}</span>
+                      <span className="text-[var(--accent-primary)]">{Icons.spinner}</span>
                       Working…
                     </>
                   ) : (
                     <>
-                      <span className="text-green-400">{Icons.circle}</span>
+                      <span className="text-emerald-400">{Icons.circle}</span>
                       Ready
                     </>
                   )}
@@ -1811,8 +1814,8 @@ export default function App() {
               </div>
             </div>
 
-            <div className="h-[22rem] overflow-auto px-6 py-5 md:h-[26rem]">
-              <div className="space-y-4">
+            <div className="h-[20rem] overflow-auto px-5 py-4 md:h-[24rem] md:px-6">
+              <div className="space-y-3">
                 {messages.map((m) => (
                   <div
                     key={m.id}
@@ -1823,24 +1826,24 @@ export default function App() {
                   >
                     <div
                       className={cn(
-                        "max-w-[92%] rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm",
+                        "max-w-[90%] rounded-xl border px-4 py-3 text-sm leading-relaxed transition-all duration-200 backdrop-blur-sm",
                         m.role === "user"
-                          ? "border-cyan-400/20 bg-cyan-400/10 text-slate-50 shadow-[0_0_0_1px_rgba(34,211,238,0.05)]"
-                          : "border-white/10 bg-white/5 text-slate-100",
+                          ? "border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/8 text-[var(--text-primary)] hover:shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                          : "border-[var(--glass-border)] bg-[var(--bg-elevated)]/80 text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]",
                         m.tone === "success" &&
-                          "border-teal-400/25 bg-teal-400/10",
+                          "border-emerald-500/25 bg-emerald-500/8 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
                         m.tone === "error" &&
-                          "border-rose-400/25 bg-rose-400/10",
+                          "border-rose-500/25 bg-rose-500/8 hover:shadow-[0_0_15px_rgba(244,63,94,0.1)]",
                         m.tone === "clarify" &&
-                          "border-amber-300/25 bg-amber-300/10",
-                        m.tone === "status" && "border-cyan-400/15 bg-white/5"
+                          "border-amber-500/25 bg-amber-500/8 hover:shadow-[0_0_15px_rgba(251,191,36,0.1)]",
+                        m.tone === "status" && "border-[var(--accent-primary)]/15 bg-[var(--bg-elevated)]/80"
                       )}
                     >
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="whitespace-pre-wrap">{m.text}</div>
                           {m.role === "agent" && m.tone === "status" ? (
-                            <div className="mt-0.5 inline-flex items-center gap-1.5 text-cyan-300">
+                            <div className="mt-0.5 inline-flex items-center gap-1.5 text-[var(--accent-primary)]">
                               {Icons.spinner}
                             </div>
                           ) : null}
@@ -1854,12 +1857,12 @@ export default function App() {
                                 type="button"
                                 onClick={() => handleOptionClick(opt)}
                                 className={cn(
-                                  "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
-                                  "border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20",
-                                  "active:scale-95 flex items-center gap-1.5"
+                                  "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover-scale",
+                                  "border-amber-500/25 bg-amber-500/8 text-amber-100 hover:bg-amber-500/15",
+                                  "active:scale-[0.98] flex items-center gap-1.5"
                                 )}
                               >
-                                <span className="text-amber-300/80">
+                                <span className="text-amber-400/70">
                                   {Icons.arrow}
                                 </span>
                                 {opt}
@@ -1874,10 +1877,10 @@ export default function App() {
 
                 {loading ? (
                   <div className="flex w-full justify-start animate-fade-slide">
-                    <div className="max-w-[92%] rounded-2xl border border-cyan-400/15 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                    <div className="max-w-[90%] rounded-xl border border-[var(--accent-primary)]/15 bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-primary)]">
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-3">
-                          <span className="text-cyan-400">{Icons.cog}</span>
+                          <span className="text-[var(--accent-primary)]">{Icons.cog}</span>
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">
                               {isUploading
@@ -1890,13 +1893,13 @@ export default function App() {
                         {/* Progress bar only during upload */}
                         {isUploading && (
                           <>
-                            <div className="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden">
+                            <div className="w-full bg-[var(--bg-base)] rounded-full h-1.5 overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full transition-all duration-300 ease-out"
+                                className="h-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full transition-all duration-300 ease-out"
                                 style={{ width: `${uploadProgress}%` }}
                               />
                             </div>
-                            <div className="text-xs text-slate-400">
+                            <div className="text-xs text-[var(--text-muted)]">
                               Upload speed depends on your network connection
                             </div>
                           </>
@@ -1909,7 +1912,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="border-t border-white/10 px-6 py-5">
+            <div className="border-t border-[var(--border-subtle)] px-5 py-4 md:px-6">
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
                   <div className="flex items-center gap-3">
@@ -1925,45 +1928,45 @@ export default function App() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className={cn(
-                        "group inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
-                        "border-white/10 bg-white/5 hover:bg-white/10",
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
+                        "group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all duration-200",
+                        "glass-subtle hover:bg-[var(--bg-surface)] hover:border-[var(--accent-primary)]/30 hover-lift",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/50",
                         fileAttention &&
-                          "ring-2 ring-amber-300/60 animate-pulse"
+                          "ring-2 ring-amber-400/50 animate-pulse"
                       )}
                     >
-                      <span className="text-cyan-300/90">{Icons.folder}</span>
-                      <span className="text-cyan-300/90">Choose files</span>
+                      <span className="text-[var(--accent-primary)]/80 group-hover:text-[var(--accent-primary)] transition-colors">{Icons.folder}</span>
+                      <span className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">Choose files</span>
                       {files.length ? (
-                        <span className="ml-1 inline-flex items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-100">
+                        <span className="ml-1 inline-flex items-center justify-center rounded-full border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/10 px-2 py-0.5 text-[11px] text-[var(--accent-primary)]">
                           +
                         </span>
                       ) : null}
                     </button>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-slate-300">
-                          <span className="text-slate-400">{Icons.file}</span>
-                          {hasMultiple ? "Multiple files" : "File"}
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[10px] md:text-[11px] text-[var(--text-secondary)] shrink-0">
+                          <span className="text-[var(--text-muted)]">{Icons.file}</span>
+                          {hasMultiple ? "Multiple" : "File"}
                         </span>
                         {files.length ? (
-                          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] text-cyan-100 animate-chip-in">
-                            <span className="text-cyan-300">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/10 px-2.5 py-1 text-[10px] md:text-[11px] text-[var(--accent-primary)] animate-chip-in min-w-0">
+                            <span className="text-[var(--accent-primary)] shrink-0">
                               {Icons.checkCircle}
                             </span>
-                            <span className="truncate max-w-[14rem]">
+                            <span className="truncate max-w-[8rem] md:max-w-[14rem]">
                               {lastFileName || files[0]?.name}
                             </span>
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-400">
+                          <span className="text-[10px] md:text-xs text-[var(--text-muted)]">
                             No file selected
                           </span>
                         )}
                       </div>
                       {files.length ? (
-                        <div className="mt-1 text-[11px] text-slate-400">
+                        <div className="mt-1 text-[11px] text-[var(--text-muted)]">
                           {hasMultiple
                             ? "Processing all files."
                             : "Ready to process."}
@@ -1980,10 +1983,10 @@ export default function App() {
                           type="button"
                           onClick={stopProcess}
                           className={cn(
-                            "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
-                            "border border-rose-400/30 bg-rose-500/20 text-rose-100",
-                            "hover:bg-rose-500/30",
-                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+                            "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200",
+                            "border border-rose-500/30 bg-rose-500/15 text-rose-100 hover-lift",
+                            "hover:bg-rose-500/25 hover:border-rose-400/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.2)]",
+                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50"
                           )}
                         >
                           {Icons.stop}
@@ -1993,10 +1996,10 @@ export default function App() {
                         <button
                           type="submit"
                           className={cn(
-                            "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
-                            "border border-cyan-400/20 bg-cyan-400/10 text-cyan-50",
-                            "hover:bg-cyan-400/15",
-                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+                            "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 btn-shine",
+                            "border border-[var(--accent-primary)]/25 bg-[var(--accent-primary)]/12 text-[var(--text-primary)] hover-lift",
+                            "hover:bg-[var(--accent-primary)]/18 hover:border-[var(--accent-primary)]/35",
+                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/50"
                           )}
                         >
                           {Icons.play}
@@ -2006,20 +2009,20 @@ export default function App() {
                     </div>
 
                     <div className="w-full md:w-[16rem]">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="glass-subtle rounded-xl p-3 hover:shadow-[var(--shadow-glow)] transition-all duration-300">
                         <div className="mb-2 flex items-center justify-between">
-                          <div className="text-[11px] font-medium text-slate-200 flex items-center gap-1">
-                            <span className="text-amber-300/80">
+                          <div className="text-[11px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                            <span className="text-amber-400/70 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)]">
                               {Icons.lightbulb}
                             </span>
                             Ideas
                           </div>
-                          <div className="text-[10px] text-slate-400">
+                          <div className="text-[10px] text-[var(--text-muted)]">
                             tap to use
                           </div>
                         </div>
 
-                        <div className="relative h-28 overflow-hidden rounded-xl border border-white/10 bg-black/10">
+                        <div className="relative h-28 overflow-hidden rounded-lg border border-[var(--glass-border)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
                           <ul className="suggestion-loop">
                             {promptSuggestions
                               .concat(promptSuggestions)
@@ -2037,15 +2040,15 @@ export default function App() {
                                         0
                                       );
                                     }}
-                                    className="w-full rounded-lg px-3 py-1.5 text-left text-sm text-slate-200/90 transition hover:bg-white/5 hover:text-white focus:outline-none"
+                                    className="w-full rounded-lg px-3 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-all duration-200 hover:bg-[var(--accent-primary)]/10 hover:text-[var(--text-primary)] hover:translate-x-1 focus:outline-none"
                                   >
                                     {s}
                                   </button>
                                 </li>
                               ))}
                           </ul>
-                          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-slate-950/90 to-transparent" />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-slate-950/90 to-transparent" />
+                          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-[var(--bg-base)]/90 to-transparent" />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--bg-base)]/90 to-transparent" />
                         </div>
                       </div>
                     </div>
@@ -2055,14 +2058,14 @@ export default function App() {
                 <div className="relative">
                   <div
                     className={cn(
-                      "rounded-2xl border bg-black/20 backdrop-blur-xl",
+                      "glass-subtle rounded-xl transition-all duration-200 hover:shadow-[var(--shadow-glow)]",
                       clarification
-                        ? "border-amber-300/30 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]"
-                        : "border-white/10 shadow-[0_0_0_1px_rgba(34,211,238,0.06)]"
+                        ? "border border-amber-500/25 shadow-[0_0_15px_rgba(251,191,36,0.1)]"
+                        : "border border-[var(--glass-border)]"
                     )}
                   >
                     <div className="flex items-start gap-3 p-3">
-                      <div className="mt-1 h-8 w-8 shrink-0 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-cyan-300/80">
+                      <div className="mt-1 h-8 w-8 shrink-0 rounded-lg border border-[var(--glass-border)] bg-[var(--bg-surface)]/50 backdrop-blur-sm flex items-center justify-center text-[var(--accent-primary)]/70">
                         {Icons.wand}
                       </div>
                       <div className="flex-1">
@@ -2081,28 +2084,27 @@ export default function App() {
                           placeholder={
                             clarification
                               ? "Reply with details so I can continue…"
-                              : "e.g. ‘split first page and then compress very tiny’"
+                              : "Describe your task, e.g. 'merge these PDFs and compress to 5MB'"
                           }
                           rows={2}
                           className={cn(
-                            "w-full resize-none bg-transparent text-sm text-slate-100 placeholder:text-slate-400",
+                            "w-full resize-none bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
                             "focus:outline-none"
                           )}
                         />
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                        <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
                           <span>
                             {clarification
                               ? "Clarification needed — keep it conversational."
-                              : "Tip: use ‘then’ to chain multiple operations."}
+                              : "Use 'then' to chain operations"}
                           </span>
-                          <span className="text-slate-500">
+                          <span className="text-[var(--text-muted)]">
                             Enter to send • Shift+Enter newline
                           </span>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <div className="pointer-events-none absolute -inset-px rounded-2xl opacity-60 blur-sm" />
                 </div>
 
                 {/* Mobile buttons row - Run/Stop and Download side by side */}
@@ -2112,10 +2114,10 @@ export default function App() {
                       type="button"
                       onClick={stopProcess}
                       className={cn(
-                        "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
-                        "border border-rose-400/30 bg-rose-500/20 text-rose-100",
-                        "hover:bg-rose-500/30",
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+                        "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover-lift",
+                        "border border-rose-500/30 bg-rose-500/15 text-rose-100",
+                        "hover:bg-rose-500/25 hover:border-rose-400/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.2)]",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50"
                       )}
                     >
                       {Icons.stop}
@@ -2125,10 +2127,10 @@ export default function App() {
                     <button
                       type="submit"
                       className={cn(
-                        "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
-                        "border border-cyan-400/20 bg-cyan-400/10 text-cyan-50",
-                        "hover:bg-cyan-400/15",
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+                        "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 btn-shine hover-lift",
+                        "border border-[var(--accent-primary)]/25 bg-[var(--accent-primary)]/12 text-[var(--text-primary)]",
+                        "hover:bg-[var(--accent-primary)]/18 hover:border-[var(--accent-primary)]/40 hover:shadow-[var(--shadow-glow)]",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/50"
                       )}
                     >
                       {Icons.play}
@@ -2144,11 +2146,11 @@ export default function App() {
                     }
                     download
                     className={cn(
-                      "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "flex-1 relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover-lift",
                       "border",
                       !result?.output_file
-                        ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
-                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15",
+                        ? "pointer-events-none border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+                        : "border-emerald-500/25 bg-emerald-500/12 text-emerald-100 hover:bg-emerald-500/18 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)]",
                       downloadBlink &&
                         result?.output_file &&
                         "animate-download-blink"
@@ -2165,25 +2167,25 @@ export default function App() {
 
                 {/* Desktop status + download row */}
                 <div className="hidden md:flex flex-row gap-3 items-center justify-between">
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-[var(--text-muted)]">
                     {error ? (
-                      <span className="text-rose-200 flex items-center gap-1">
+                      <span className="text-rose-300 flex items-center gap-1.5">
                         {Icons.error}
                         {error}
                       </span>
                     ) : clarification ? (
-                      <span className="text-amber-200 flex items-center gap-1">
+                      <span className="text-amber-300 flex items-center gap-1.5">
                         {Icons.question}
                         Agent needs one more detail.
                       </span>
                     ) : result ? (
-                      <span className="text-teal-200 flex items-center gap-1">
+                      <span className="text-emerald-300 flex items-center gap-1.5">
                         {Icons.checkCircle}
                         Output ready for download.
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1">
-                        <span className="text-slate-500">{Icons.upload}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-[var(--text-muted)]">{Icons.upload}</span>
                         Upload files, then describe what you need.
                       </span>
                     )}
@@ -2197,11 +2199,11 @@ export default function App() {
                     }
                     download
                     className={cn(
-                      "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+                      "relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover-lift",
                       "border",
                       !result?.output_file
-                        ? "pointer-events-none border-white/10 bg-white/5 text-slate-400"
-                        : "border-teal-400/25 bg-teal-400/10 text-teal-50 hover:bg-teal-400/15",
+                        ? "pointer-events-none border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+                        : "border-emerald-500/25 bg-emerald-500/12 text-emerald-100 hover:bg-emerald-500/18 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)]",
                       downloadBlink &&
                         result?.output_file &&
                         "animate-download-blink"
@@ -2226,58 +2228,58 @@ export default function App() {
           </section>
 
           <aside className="hidden md:block">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-2 text-xs font-medium text-slate-200 flex items-center gap-2">
-                <span className="text-cyan-400/80">{Icons.clipboard}</span>
+            <div className="glass-card rounded-2xl p-4 shadow-sm hover:shadow-[var(--shadow-glow)] transition-all duration-300">
+              <div className="mb-3 text-xs font-medium text-[var(--text-primary)] flex items-center gap-2">
+                <span className="text-[var(--accent-primary)]/70 drop-shadow-[0_0_4px_rgba(59,130,246,0.3)]">{Icons.clipboard}</span>
                 Session
               </div>
-              <div className="space-y-2 text-xs text-slate-300">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <span className="text-slate-500">{Icons.file}</span>
+              <div className="space-y-2.5 text-xs text-[var(--text-secondary)]">
+                <div className="glass-subtle rounded-xl px-3 py-2 hover-scale cursor-default">
+                  <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">{Icons.file}</span>
                     Selected
                   </div>
-                  <div className="truncate">
+                  <div className="truncate mt-0.5 text-[var(--text-primary)]">
                     {files.length ? lastFileName || files[0]?.name : "—"}
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <span className="text-slate-500">{Icons.signal}</span>
+                <div className="glass-subtle rounded-xl px-3 py-2 hover-scale cursor-default">
+                  <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">{Icons.signal}</span>
                     Status
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 mt-0.5">
                     {loading ? (
                       <>
-                        <span className="text-cyan-400">{Icons.spinner}</span>
-                        {isUploading ? "Uploading" : "Processing"}
+                        <span className="text-[var(--accent-primary)]">{Icons.spinner}</span>
+                        <span className="text-[var(--text-primary)]">{isUploading ? "Uploading" : "Processing"}</span>
                       </>
                     ) : result ? (
                       <>
-                        <span className="text-teal-400">{Icons.check}</span>
-                        Ready
+                        <span className="text-emerald-400">{Icons.check}</span>
+                        <span className="text-[var(--text-primary)]">Ready</span>
                       </>
                     ) : (
                       <>
-                        <span className="text-slate-500">{Icons.minus}</span>
-                        Idle
+                        <span className="text-[var(--text-muted)]">{Icons.minus}</span>
+                        <span className="text-[var(--text-secondary)]">Idle</span>
                       </>
                     )}
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <span className="text-slate-500">{Icons.bolt}</span>
+                <div className="glass-subtle rounded-xl px-3 py-2 hover-scale cursor-default">
+                  <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">{Icons.bolt}</span>
                     RAM usage
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mt-0.5">
                     <span className={cn(ramIndicator.className)}>
                       {Icons.circle}
                     </span>
-                    <span className="text-slate-200">{ramIndicator.label}</span>
-                    <span className="text-slate-500">•</span>
-                    <span className="text-slate-400">
+                    <span className="text-[var(--text-primary)]">{ramIndicator.label}</span>
+                    <span className="text-[var(--text-muted)]">•</span>
+                    <span className="text-[var(--text-secondary)]">
                       {ramStats
                         ? `${ramStats.rss_mb || ramStats.peak_rss_mb || "—"}MB`
                         : "Loading..."}
@@ -2285,50 +2287,50 @@ export default function App() {
                   </div>
                 </div>
                 {loading && (
-                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2">
+                  <div className="rounded-xl border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/8 px-3 py-2">
                     {isUploading ? (
                       <>
-                        <div className="text-[11px] text-cyan-300 flex items-center gap-1 mb-1">
+                        <div className="text-[11px] text-[var(--accent-primary)] flex items-center gap-1.5 mb-1">
                           {Icons.upload}
                           Uploading
                         </div>
-                        <div className="text-cyan-100 font-medium text-sm mb-1">
+                        <div className="text-[var(--text-primary)] font-medium text-sm mb-1.5">
                           {uploadProgress}%
                         </div>
-                        <div className="w-full bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-full bg-[var(--bg-base)] rounded-full h-1 overflow-hidden">
                           <div
-                            className="h-full bg-cyan-400 rounded-full transition-all duration-300"
+                            className="h-full bg-[var(--accent-primary)] rounded-full transition-all duration-300"
                             style={{ width: `${uploadProgress}%` }}
                           />
                         </div>
                       </>
                     ) : (
                       <>
-                        <div className="text-[11px] text-cyan-300 flex items-center gap-1 mb-1">
+                        <div className="text-[11px] text-[var(--accent-primary)] flex items-center gap-1.5 mb-1">
                           {Icons.clock}
                           Processing
                         </div>
-                        <div className="text-cyan-100 font-medium text-sm">
+                        <div className="text-[var(--text-primary)] font-medium text-sm">
                           {processingMessage || "Working..."}
                         </div>
                       </>
                     )}
                   </div>
                 )}
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <span className="text-slate-500">{Icons.export}</span>
+                <div className="glass-subtle rounded-xl px-3 py-2 hover-scale cursor-default">
+                  <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">{Icons.export}</span>
                     Output
                   </div>
-                  <div className="truncate">{result?.output_file || "—"}</div>
+                  <div className="truncate mt-0.5 text-[var(--text-primary)]">{result?.output_file || "—"}</div>
                 </div>
               </div>
             </div>
           </aside>
         </main>
 
-        <footer className="pt-2 text-xs text-slate-500">
-          © {new Date().getFullYear()} OrderMyPDF — AI-powered PDF operations.
+        <footer className="pt-4 text-xs text-[var(--text-muted)] glass-subtle rounded-lg px-4 py-2 inline-block">
+          © {new Date().getFullYear()} OrderMyPDF — Professional document processing
         </footer>
       </div>
     </div>
