@@ -16,6 +16,7 @@ from app.ai_parser import ai_parser
 from typing import Union
 from app.error_handler import ErrorClassifier
 from app.command_intelligence import CommandIntelligence, ResolutionPipeline
+from app.prompt_sanitizer import should_use_llm, get_invalid_prompt_response
 
 # 40K Pattern Resolution imports (NON-BREAKING - only adds new capability)
 try:
@@ -3895,6 +3896,17 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
         return ClarificationResult(intent=compress_intent)
     
     # If no patterns matched, try AI parser
+    # COST-SAFE SANITIZATION: Check if prompt is garbage before calling LLM
+    use_llm, reason = should_use_llm(user_prompt)
+    
+    if not use_llm:
+        # Prompt is garbage - don't waste LLM tokens
+        print(f"[Sanitizer] Skipping LLM - reason: {reason}")
+        return ClarificationResult(
+            clarification=get_invalid_prompt_response(file_names).clarification,
+            options=get_invalid_prompt_response(file_names).options
+        )
+    
     try:
         intent = ai_parser.parse_intent(user_prompt, file_names)
         return ClarificationResult(intent=intent)
