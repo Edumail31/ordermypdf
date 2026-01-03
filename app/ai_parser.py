@@ -8,14 +8,12 @@ LLM OUTPUT SAFETY: All LLM output access uses safe_get() - never dot access.
 """
 
 import json
+import re
 from typing import Union
 from groq import Groq
 from app.config import settings
 from app.models import ParsedIntent
 from app.llm_output_handler import safe_get, safe_get_nested
-import re
-
-
 RE_NUMERIC_ONLY = re.compile(r'^\d+$')
 RE_NUMERIC_WITH_UNIT = re.compile(r'^\d+\s*(mb|kb)?$', re.IGNORECASE)
 RE_SHORTHAND_ROT = re.compile(r'\brot\b', re.IGNORECASE)
@@ -548,12 +546,31 @@ class AIParser:
     """Parses user intent using Groq LLM with dual-model fallback"""
     
     def __init__(self):
-        self.client = Groq(api_key=settings.groq_api_key)
+        self.client = None
         self.primary_model = settings.llm_model
         self.fallback_model = getattr(settings, 'llm_model_fallback', settings.llm_model)
+        self._init_client()
+    
+    def _init_client(self):
+        """Initialize Groq client with error handling"""
+        try:
+            api_key = getattr(settings, 'groq_api_key', None)
+            if not api_key or api_key == "test-key-configure-in-env":
+                print("[AI Parser] WARNING: Groq API key not configured")
+                return
+            self.client = Groq(api_key=api_key)
+        except Exception as e:
+            print(f"[AI Parser] ERROR initializing Groq client: {e}")
+            self.client = None
     
     def _call_model(self, model: str, user_message: str) -> dict:
         """Call a specific model and return parsed JSON response"""
+        if not self.client:
+            # Try to reinitialize client
+            self._init_client()
+            if not self.client:
+                raise RuntimeError("LLM client not available. Please configure GROQ_API_KEY.")
+        
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -652,7 +669,6 @@ Parse this into JSON:"""
                 if isinstance(op, dict):
                   _sanitize_rotate_pages(op)
                 intents.append(ParsedIntent(**op))
-              return intents
               return intents
 
             if isinstance(parsed_json, dict):

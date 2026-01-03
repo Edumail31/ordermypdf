@@ -15,7 +15,7 @@ OPTIMIZATIONS:
 import os
 import shutil
 import time
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass, field
 from threading import Lock
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
+from pydantic import BaseModel
 import re
 
 from app.config import settings
@@ -651,6 +652,19 @@ async def startup_event():
     print("[OK] OrderMyPDF started successfully")
     print(f"[OK] Using LLM model: {settings.llm_model}")
     
+    # Check LLM availability on startup
+    try:
+        from app.llm_wrapper import check_llm_availability
+        llm_status = check_llm_availability()
+        if llm_status["available"]:
+            print(f"[OK] LLM connected successfully (model: {llm_status['models']})")
+        elif not llm_status["api_key_configured"]:
+            print("[WARN] LLM API key not configured - AI features will be limited")
+        else:
+            print(f"[WARN] LLM connection failed: {llm_status.get('error', 'Unknown error')}")
+    except Exception as e:
+        print(f"[WARN] Could not check LLM status: {e}")
+    
     job_queue.set_processor(process_job_background)
     print("[OK] Job queue system initialized")
     
@@ -661,6 +675,28 @@ async def startup_event():
     scheduler.add_job(_cleanup_old_preuploads, 'interval', minutes=5)  # Clean old preuploads
     scheduler.start()
     print("[OK] Auto-cleanup scheduler started (Action 4: aggressive cleanup, Action 5: job archival)")
+
+
+# ==================== LLM HEALTH CHECK ====================
+@app.get("/api/llm-status")
+async def get_llm_status():
+    """Check LLM availability and return status."""
+    try:
+        from app.llm_wrapper import check_llm_availability
+        status = check_llm_availability()
+        return {
+            "available": status["available"],
+            "configured": status["api_key_configured"],
+            "models": status.get("models", []),
+            "error": status.get("error")
+        }
+    except Exception as e:
+        return {
+            "available": False,
+            "configured": False,
+            "models": [],
+            "error": str(e)
+        }
 
 
 @app.on_event("shutdown")
@@ -837,13 +873,25 @@ def execute_operation(intent: ParsedIntent) -> tuple[str, str]:
         return output_file, message
     elif intent.operation_type == "ocr":
         require_pdf(operation.file)
-        output_file = ocr_pdf(
-            operation.file,
-            language=(operation.language or "eng"),
-            deskew=(operation.deskew if operation.deskew is not None else True),
-        )
-        message = f"OCR complete for {operation.file}"
-        return output_file, message
+        try:
+            output_file = ocr_pdf(
+                operation.file,
+                language=(operation.language or "eng"),
+                deskew=(operation.deskew if operation.deskew is not None else True),
+            )
+            message = f"OCR complete for {operation.file}"
+            return output_file, message
+        except Exception as e:
+            error_str = str(e)
+            if "OCR_ALREADY_SEARCHABLE" in error_str:
+                # PDF already has text - this is not an error, just info
+                # Extract the preview text from the error message
+                preview = error_str.split("Preview: ")[-1].rstrip('"') if "Preview:" in error_str else ""
+                raise Exception(
+                    f"✅ Good news! This PDF already contains searchable text - no OCR needed.\n\n"
+                    f"The text is already selectable and copy-able. {preview}"
+                )
+            raise
 
     elif intent.operation_type == "docx_to_pdf":
         require_docx(operation.file)
@@ -1093,6 +1141,33 @@ def execute_operation_pipeline(intents: list[ParsedIntent], uploaded_files: list
 
 
 
+def _ensure_files_are_ready(file_names: list[str]) -> list[str]:
+    """
+    Self-healing safety mechanism (per spec section 12).
+    
+    Ensures all files are in READY state:
+    - Filters out any .txt files (terminal state from extract_text)
+    - Verifies original files exist
+    
+    This prevents "Cannot run operations after extracting text" errors
+    when AI analysis was performed but document state should remain READY.
+    """
+    ready_files = []
+    for fname in file_names:
+        lower = fname.lower()
+        # Skip .txt files - they are terminal outputs, not valid inputs
+        if lower.endswith(".txt"):
+            print(f"[SELF-HEAL] Skipping terminal file: {fname}")
+            continue
+        # Keep valid input files
+        fpath = get_upload_path(fname)
+        if os.path.exists(fpath):
+            ready_files.append(fname)
+        else:
+            print(f"[SELF-HEAL] File not found, skipping: {fname}")
+    return ready_files
+
+
 def process_job_background(job_id: str):
     """
     Background job processor - runs the same logic as /process but with progress updates.
@@ -1109,9 +1184,26 @@ def process_job_background(job_id: str):
         session_id = job.session_id
         context_question = job.context_question
         
+        # SELF-HEALING: Ensure files are in READY state (per spec section 12)
+        # This filters out any .txt files that might have been incorrectly passed
+        file_names = _ensure_files_are_ready(file_names)
+        if not file_names:
+            job_queue.fail_job(job_id, "No valid input files found. Please re-upload your files.")
+            return
+        
         job_queue.update_progress(job_id, 10, "Analyzing your request...")
         
         session = _get_session(session_id)
+        
+        # Per spec section 9: Tool commands always win
+        # If prompt looks like an explicit tool command, clear any stale session state
+        # This prevents AI analysis context from polluting tool processing
+        prompt_lower = (prompt or "").lower()
+        explicit_tool_keywords = ["compress", "merge", "split", "convert", "rotate", "ocr", "watermark", "extract", "delete", "keep"]
+        is_explicit_tool = any(kw in prompt_lower for kw in explicit_tool_keywords)
+        if is_explicit_tool and session:
+            # Clear pending state that might be from AI analysis
+            _clear_pending(session)
 
         locked_prompt = None
         if session and session.intent_status == "RESOLVED" and session.locked_action:
@@ -1410,6 +1502,34 @@ async def preupload_files(
         raise HTTPException(status_code=500, detail=f"Failed to upload files: {str(e)}")
 
 
+@app.post("/api/upload")
+async def api_upload_files(
+    files: List[UploadFile] = File(..., description="Files to upload"),
+):
+    """
+    Simple file upload endpoint for analyze mode.
+    Returns list of uploaded file names.
+    """
+    try:
+        if len(files) > settings.max_files_per_request:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files. Maximum {settings.max_files_per_request} files allowed."
+            )
+        
+        file_names = await save_uploaded_files(files)
+        
+        return {
+            "files": file_names,
+            "message": "Files uploaded successfully.",
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload files: {str(e)}")
+
+
 @app.post("/submit-with-upload")
 async def submit_with_preupload(
     upload_id: str = Form(..., description="Upload ID from /preupload"),
@@ -1544,13 +1664,28 @@ async def submit_job_reuse(
         if not files_list:
             raise HTTPException(status_code=400, detail="No file names provided")
         
+        # SELF-HEALING: Filter out .txt files (terminal state from extract_text)
+        # Per spec section 12: AI analysis should not create terminal state
+        valid_files = []
         for fname in files_list:
+            if fname.lower().endswith(".txt"):
+                print(f"[SELF-HEAL submit-reuse] Rejecting terminal file: {fname}")
+                continue
             fpath = get_upload_path(fname)
             if not os.path.exists(fpath):
                 raise HTTPException(
                     status_code=404,
                     detail=f"File not found: {fname}. Please re-upload."
                 )
+            valid_files.append(fname)
+        
+        if not valid_files:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid input files found. Please upload PDF, image, or DOCX files."
+            )
+        
+        files_list = valid_files
         
         session = _get_session(session_id)
         prompt_to_use = prompt
@@ -1762,6 +1897,15 @@ async def process_pdfs(
         file_names = await save_uploaded_files(files)
 
         session = _get_session(session_id)
+        
+        # Per spec section 9: Tool commands always win
+        # If prompt looks like an explicit tool command, clear any stale session state
+        prompt_lower = (prompt or "").lower()
+        explicit_tool_keywords = ["compress", "merge", "split", "convert", "rotate", "ocr", "watermark", "extract", "delete", "keep"]
+        is_explicit_tool = any(kw in prompt_lower for kw in explicit_tool_keywords)
+        if is_explicit_tool and session:
+            _clear_pending(session)
+        
         locked_prompt = None
         if session and session.intent_status == "RESOLVED" and session.locked_action:
             locked_prompt = session.locked_action
@@ -1999,6 +2143,218 @@ async def cleanup_temp_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
+
+# ==================== ANALYZE DOCUMENT MODE ====================
+class AnalyzeRequest(BaseModel):
+    files: List[str]
+    question: str
+    history: Optional[List[dict]] = []
+
+
+@app.post("/api/analyze")
+async def analyze_document(request: AnalyzeRequest):
+    """
+    Analyze document content and answer questions using LLM.
+    
+    This is a direct LLM chat mode without intent parsing or clarification logic.
+    Used for document Q&A, summarization, and analysis.
+    
+    SAFETY: Uses llm_wrapper for robust error handling and fallbacks.
+    """
+    from app.llm_wrapper import safe_llm_call, check_llm_availability
+    
+    # Check LLM availability first
+    llm_status = check_llm_availability()
+    if not llm_status["api_key_configured"]:
+        return {
+            "answer": "⚠️ AI analysis is not configured. Please set up the GROQ_API_KEY in the environment variables to enable document analysis."
+        }
+    
+    try:
+        # Extract text from PDF files
+        document_text = ""
+        for fname in request.files[:3]:  # Limit to first 3 files
+            fpath = os.path.join("uploads", fname)
+            if os.path.exists(fpath) and fname.lower().endswith(".pdf"):
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(fpath)
+                    for page_num in range(min(doc.page_count, 20)):  # Limit to first 20 pages
+                        page = doc[page_num]
+                        text = page.get_text()
+                        if text.strip():
+                            document_text += f"\n--- Page {page_num + 1} ---\n{text}"
+                    doc.close()
+                except Exception as e:
+                    print(f"[ANALYZE] Could not extract text from {fname}: {e}")
+            # Handle DOCX files
+            elif os.path.exists(fpath) and fname.lower().endswith(".docx"):
+                try:
+                    from docx import Document
+                    doc = Document(fpath)
+                    for para in doc.paragraphs[:200]:  # Limit paragraphs
+                        if para.text.strip():
+                            document_text += f"\n{para.text}"
+                except Exception as e:
+                    print(f"[ANALYZE] Could not extract text from {fname}: {e}")
+            # Handle text files
+            elif os.path.exists(fpath) and fname.lower().endswith(".txt"):
+                try:
+                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                        document_text += f"\n{f.read()[:15000]}"
+                except Exception as e:
+                    print(f"[ANALYZE] Could not read text from {fname}: {e}")
+        
+        if not document_text.strip():
+            return {
+                "answer": "I couldn't extract any text from the document. The PDF might be scanned or image-based. Try using OCR first with a command like 'OCR this document' before analyzing."
+            }
+        
+        # Truncate document text to fit context window
+        max_chars = 15000
+        if len(document_text) > max_chars:
+            document_text = document_text[:max_chars] + "\n\n[... Document truncated for analysis ...]"
+        
+        # Build conversation history
+        messages = [
+            {
+                "role": "system",
+                "content": f"""You are a helpful document analysis assistant. You have been given the following document content to analyze:
+
+<document>
+{document_text}
+</document>
+
+Answer the user's questions about this document. Be helpful, accurate, and cite specific parts of the document when relevant. If asked to summarize, provide a clear and concise summary. If the information is not in the document, say so clearly."""
+            }
+        ]
+        
+        # Add conversation history (limit to last 6 exchanges)
+        for msg in request.history[-6:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        # Add current question
+        messages.append({
+            "role": "user",
+            "content": request.question
+        })
+        
+        # Call LLM using safe wrapper
+        response = safe_llm_call(
+            messages=messages,
+            purpose="document_analysis",
+            temperature=0.7,
+            max_tokens=1500,
+            max_retries=2,
+            fallback_response="I couldn't analyze the document at the moment. Please try again."
+        )
+        
+        if response.success:
+            return {"answer": response.content}
+        else:
+            print(f"[ANALYZE] LLM call failed: {response.error}")
+            return {"answer": response.content}  # Will contain fallback message
+        
+    except Exception as e:
+        print(f"[ANALYZE ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return {"answer": f"Sorry, I encountered an error while analyzing the document. Please try again."}
+
+
+# ==================== EXPORT CHAT ====================
+class ExportChatRequest(BaseModel):
+    content: str
+    format: str  # "pdf" or "docx"
+    session_id: Optional[str] = None
+
+
+@app.post("/api/export-chat")
+async def export_chat(request: ExportChatRequest):
+    """
+    Export chat content as PDF or DOCX file.
+    """
+    import tempfile
+    from fastapi.responses import FileResponse
+    
+    try:
+        format_type = request.format.lower()
+        content = request.content.replace("\\n", "\n")
+        
+        if format_type == "pdf":
+            # Create PDF from text
+            import fitz  # PyMuPDF
+            
+            doc = fitz.open()
+            page = doc.new_page()
+            
+            # Simple text insertion with word wrap
+            rect = fitz.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
+            
+            # Clean markdown formatting
+            clean_content = content.replace("**", "").replace("# ", "")
+            
+            # Insert text with line breaks
+            page.insert_textbox(rect, clean_content, fontsize=11, fontname="helv")
+            
+            output_path = os.path.join("output", f"chat_export_{int(time.time())}.pdf")
+            doc.save(output_path)
+            doc.close()
+            
+            return FileResponse(
+                output_path,
+                media_type="application/pdf",
+                filename=f"chat_export.pdf"
+            )
+            
+        elif format_type == "docx":
+            from docx import Document
+            from docx.shared import Pt
+            
+            doc = Document()
+            
+            # Add content with basic formatting
+            lines = content.replace("\\n", "\n").split("\n")
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                if line.startswith("# "):
+                    p = doc.add_heading(line[2:], level=1)
+                elif line.startswith("**You:**"):
+                    p = doc.add_paragraph()
+                    run = p.add_run("You: ")
+                    run.bold = True
+                    p.add_run(line.replace("**You:**", "").strip())
+                elif line.startswith("**AI:**"):
+                    p = doc.add_paragraph()
+                    run = p.add_run("AI: ")
+                    run.bold = True
+                    p.add_run(line.replace("**AI:**", "").strip())
+                else:
+                    doc.add_paragraph(line.replace("**", ""))
+            
+            output_path = os.path.join("output", f"chat_export_{int(time.time())}.docx")
+            doc.save(output_path)
+            
+            return FileResponse(
+                output_path,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                filename=f"chat_export.docx"
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {format_type}")
+            
+    except Exception as e:
+        print(f"[EXPORT ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+# ================================================================
 
 
 if os.path.exists(FRONTEND_DIST_DIR):

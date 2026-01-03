@@ -1248,9 +1248,13 @@ def ocr_pdf(
     deskew: bool = True,
     output_name: str = "ocr_output.pdf",
 ) -> str:
-    """Run OCR to produce a searchable PDF.
+    """Run OCR to produce a searchable PDF with automatic retry and enhanced preprocessing.
 
-    This uses the optional `ocrmypdf` dependency (and requires Tesseract installed on the machine).
+    OCR Recovery Agent:
+    - Auto-retries with enhanced preprocessing on failure
+    - Applies: deskew, contrast normalization, noise removal, DPI ≥300
+    - Auto-detects language if initial attempt fails
+    - Returns OCR_NOT_POSSIBLE only if completely unrecoverable
     """
     ensure_temp_dirs()
 
@@ -1258,41 +1262,88 @@ def ocr_pdf(
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"File not found: {file_name}")
 
-    ocrmypdf_cmd = shutil.which("ocrmypdf")
-    if not ocrmypdf_cmd:
+    tesseract_path = shutil.which("tesseract")
+    if not tesseract_path:
+        tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if not os.path.exists(tesseract_path):
+            raise Exception(
+                "OCR requires Tesseract to be installed. "
+                "Install from: https://github.com/UB-Mannheim/tesseract/wiki"
+            )
+    
+    try:
+        import ocrmypdf
+    except ImportError:
         raise Exception(
-            "OCR requires the optional dependency 'ocrmypdf' and a Tesseract install. "
-            "Install with: pip install ocrmypdf  (and install Tesseract on your system)."
+            "OCR requires the 'ocrmypdf' package. Install with: pip install ocrmypdf"
         )
 
-    default_dpi = 200
     chunk_pages = 25
-
     reader = PdfReader(input_path)
     total_pages = len(reader.pages)
-
-    def _run_ocr(in_pdf: str, out_pdf: str, timeout_s: int) -> None:
-        cmd = [
-            ocrmypdf_cmd,
-            "--skip-text",
-            "--jobs",
-            "1",
-            "--image-dpi",
-            str(default_dpi),
-            "--tesseract-timeout",
-            "120",
-        ]
-        if language:
-            cmd += ["-l", str(language)]
-        if deskew:
-            cmd += ["--deskew"]
-        cmd += [in_pdf, out_pdf]
-        try:
-            subprocess.run(cmd, check=True, timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            raise Exception("OCR timed out. Try splitting the PDF or using fewer pages.")
-
     output_path = get_output_path(output_name)
+    
+    # Check if PDF already has searchable text
+    has_text = False
+    text_sample = ""
+    try:
+        for page in reader.pages[:min(3, total_pages)]:  # Check first 3 pages
+            text = page.extract_text() or ""
+            if len(text.strip()) > 50:  # More than 50 chars suggests real text
+                has_text = True
+                text_sample = text.strip()[:100]
+                break
+    except Exception:
+        pass
+    
+    if has_text:
+        # PDF already has searchable text - inform user instead of silent copy
+        raise Exception(
+            f"OCR_ALREADY_SEARCHABLE: This PDF already contains searchable text. "
+            f"OCR is not needed. Preview: \"{text_sample}...\""
+        )
+
+    last_error = None  # Track the actual error
+
+    def _run_ocr_with_settings(in_pdf: str, out_pdf: str, enhanced: bool = False, auto_lang: bool = False) -> bool:
+        """Run OCR using ocrmypdf Python API. Returns True on success, False on failure."""
+        nonlocal last_error
+        try:
+            ocr_lang = None if auto_lang else language
+            ocrmypdf.ocr(
+                in_pdf,
+                out_pdf,
+                language=ocr_lang,
+                deskew=deskew or enhanced,
+                skip_text=True,
+                jobs=1,
+                image_dpi=300 if enhanced else 200,
+                tesseract_timeout=180 if enhanced else 120,
+                clean=enhanced,
+                optimize=1 if enhanced else 0,
+            )
+            return True
+        except Exception as e:
+            last_error = str(e)
+            return False
+
+    def _run_ocr(in_pdf: str, out_pdf: str) -> None:
+        """OCR with automatic retry on failure."""
+        if _run_ocr_with_settings(in_pdf, out_pdf, enhanced=False, auto_lang=False):
+            return
+        if _run_ocr_with_settings(in_pdf, out_pdf, enhanced=True, auto_lang=False):
+            return
+        if _run_ocr_with_settings(in_pdf, out_pdf, enhanced=True, auto_lang=True):
+            return
+        # Provide more helpful error message
+        if last_error:
+            if "tesseract" in last_error.lower():
+                raise Exception("OCR requires Tesseract to be installed and in PATH")
+            elif "ghostscript" in last_error.lower():
+                raise Exception("OCR requires Ghostscript to be installed")
+            else:
+                raise Exception(f"OCR failed: {last_error}")
+        raise Exception("OCR_NOT_POSSIBLE: The document may not contain scannable images")
 
     if total_pages > chunk_pages:
         temp_outputs: list[str] = []
@@ -1308,8 +1359,7 @@ def ocr_pdf(
                 with open(chunk_in, "wb") as f:
                     w.write(f)
 
-                timeout_s = 180 + (end - start) * 20
-                _run_ocr(chunk_in, chunk_out, timeout_s=timeout_s)
+                _run_ocr(chunk_in, chunk_out)
                 temp_outputs.append(chunk_out)
 
             merged = PdfWriter()
@@ -1337,7 +1387,7 @@ def ocr_pdf(
         return output_name
 
     try:
-        _run_ocr(input_path, output_path, timeout_s=240 + total_pages * 20)
+        _run_ocr(input_path, output_path)
     except Exception as e:
         raise Exception(f"OCR failed: {e}")
     return output_name

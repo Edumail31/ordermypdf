@@ -645,16 +645,21 @@ def _maybe_order_ambiguity_options(user_prompt: str, file_names: list[str]) -> C
     if _has_explicit_order_words(norm):
         return None
 
+    if _is_terminal_intent(user_prompt):
+        return None
+
     if "split" in ops and not _extract_page_range_tokens(probe):
-        return ClarificationResult(
-            clarification="Which pages should I split/keep? (example: 1-3)",
-            options=_options_for_pages_question("keep"),
-        )
+        if not _is_terminal_intent(user_prompt):
+            return ClarificationResult(
+                clarification="Which pages should I split/keep? (example: 1-3)",
+                options=_options_for_pages_question("keep"),
+            )
     if "delete" in ops and not _extract_page_range_tokens(probe):
-        return ClarificationResult(
-            clarification="Which pages should I delete? (example: 2,4-6)",
-            options=_options_for_pages_question("delete"),
-        )
+        if not _is_terminal_intent(user_prompt):
+            return ClarificationResult(
+                clarification="Which pages should I delete? (example: 2,4-6)",
+                options=_options_for_pages_question("delete"),
+            )
 
     clauses = _extract_two_clauses_from_prompt(probe)
 
@@ -935,6 +940,24 @@ def _try_one_flow_resolution(user_prompt: str, file_names: list[str]) -> Clarifi
         return None
 
 
+TERMINAL_INTENTS_NO_PARAMS = {
+    "clean", "fix", "enhance", "flatten", "ocr", "extract text", "extract_text",
+    "make searchable", "compress", "rotate all", "enhance scan", "fix scan",
+    "clean pdf", "flatten pdf", "ocr pdf", "ocr this", "extract text from",
+    "convert to pdf", "docx to pdf", "pdf to docx", "to docx", "to word",
+}
+
+
+def _is_terminal_intent(prompt: str) -> bool:
+    """Check if prompt is a terminal intent that requires NO user parameters."""
+    p = (prompt or "").strip().lower()
+    for term in TERMINAL_INTENTS_NO_PARAMS:
+        if term in p:
+            if "split" not in p and "delete" not in p and "extract page" not in p and "keep page" not in p:
+                return True
+    return False
+
+
 def clarify_intent(user_prompt: str, file_names: list[str], last_question: str = "", allow_multi: bool = True) -> ClarificationResult:
     """
     Try to parse the user's intent. Handle common patterns like 'compress to X MB', 'split 1st page', etc.
@@ -945,6 +968,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
     2. _try_3stage_resolution: Optional 3-stage resolution for ambiguous commands
     3. Error guards: File-type compatibility checks
     4. _try_one_flow_resolution: 40K+ pattern One-Flow Resolution (NEW - NON-BREAKING)
+    5. TERMINAL_INTENTS_NO_PARAMS: Guard to skip parameter collection for terminal intents
     """
     
     one_flow_result = _try_one_flow_resolution(user_prompt, file_names)
@@ -3368,6 +3392,42 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
             )
         )
 
+    if file_names and re.search(r"\b(ocr|make searchable)\b", prompt_compact, re.IGNORECASE) and not re.search(r"\b(split|delete|extract page|keep page)\b", prompt_compact, re.IGNORECASE):
+        file_name = file_names[0]
+        return ClarificationResult(
+            intent=ParsedIntent(
+                operation_type="ocr",
+                ocr={"operation": "ocr", "file": file_name, "language": "eng", "deskew": True},
+            )
+        )
+
+    if file_names and re.search(r"\b(extract text|extract_text|get text)\b", prompt_compact, re.IGNORECASE) and not re.search(r"\b(split|delete|extract page|keep page)\b", prompt_compact, re.IGNORECASE):
+        file_name = file_names[0]
+        return ClarificationResult(
+            intent=ParsedIntent(
+                operation_type="extract_text",
+                extract_text={"operation": "extract_text", "file": file_name, "pages": None},
+            )
+        )
+
+    if file_names and re.search(r"\b(flatten|flat)\b", prompt_compact, re.IGNORECASE) and not re.search(r"\b(split|delete|extract page|keep page)\b", prompt_compact, re.IGNORECASE):
+        file_name = file_names[0]
+        return ClarificationResult(
+            intent=ParsedIntent(
+                operation_type="flatten",
+                flatten={"operation": "flatten", "file": file_name},
+            )
+        )
+
+    if file_names and re.search(r"\b(enhance|clean|fix scan|enhance scan)\b", prompt_compact, re.IGNORECASE) and not re.search(r"\b(split|delete|extract page|keep page)\b", prompt_compact, re.IGNORECASE):
+        file_name = file_names[0]
+        return ClarificationResult(
+            intent=ParsedIntent(
+                operation_type="enhance_scan",
+                enhance_scan={"operation": "enhance_scan", "file": file_name},
+            )
+        )
+
     if (not allow_multi) or (not _looks_like_multi_operation_prompt(user_prompt)):
         if len(file_names) >= 2 and re.search(r"\b(merge|combine|join)\b", prompt_for_match, re.IGNORECASE):
             return ClarificationResult(
@@ -3377,7 +3437,7 @@ def clarify_intent(user_prompt: str, file_names: list[str], last_question: str =
                 )
             )
 
-        if file_names and re.search(r"\b(delete|remove)\b", prompt_for_match, re.IGNORECASE):
+        if file_names and re.search(r"\b(delete|remove)\b", prompt_for_match, re.IGNORECASE) and not _is_terminal_intent(user_prompt):
             pages = _parse_page_ranges(user_prompt)
             if not pages:
                 return ClarificationResult(
